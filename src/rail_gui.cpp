@@ -813,8 +813,8 @@ static bool isRailValid(TileIndex tile, uint autorail_type)
 
 	Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
 	if (IsHalftileSlope(tileSlope)) {
-		static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
 		// CORNER_W, CORNER_S, CORNER_E, CORNER_N
+		static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
 		Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
 		if (autorail_type != _lower_rail[halftile_corner]) {
 			/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
