@@ -462,9 +462,24 @@ struct BuildRailToolbarWindow : Window {
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_EW)->widget_data     = rti->gui_sprites.build_ew_rail;
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_Y)->widget_data      = rti->gui_sprites.build_y_rail;
 		this->GetWidget<NWidgetCore>(WID_RAT_AUTORAIL)->widget_data     = rti->gui_sprites.auto_rail;
+		this->GetWidget<NWidgetCore>(WID_RAT_PATHRAIL)->widget_data     = rti->gui_sprites.auto_rail;
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_DEPOT)->widget_data  = rti->gui_sprites.build_depot;
 		this->GetWidget<NWidgetCore>(WID_RAT_CONVERT_RAIL)->widget_data = rti->gui_sprites.convert_rail;
 		this->GetWidget<NWidgetCore>(WID_RAT_BUILD_TUNNEL)->widget_data = rti->gui_sprites.build_tunnel;
+	}
+
+	/**
+	 * Draw dots over the pointrail icon so it looks cool :)
+	 */
+	virtual void DrawWidget(const Rect &r, int widget) const
+	{
+		if (widget == WID_RAT_PATHRAIL) {
+			Dimension d = GetSpriteSize(SPR_BLOT);
+			uint offset = this->IsWidgetLowered(WID_RAT_PATHRAIL) ? 1 : 0;
+			uint shuffle = 3;
+			DrawSprite(SPR_BLOT, PALETTE_TO_GREY, (r.left + r.right - d.width) / 2 + offset - shuffle * 2, (r.top + r.bottom - d.height) / 2 + offset - shuffle);
+			DrawSprite(SPR_BLOT, PALETTE_TO_GREY, (r.left + r.right - d.width) / 2 + offset + shuffle * 2, (r.top + r.bottom - d.height) / 2 + offset + shuffle);
+		}
 	}
 
 	/**
@@ -549,6 +564,11 @@ struct BuildRailToolbarWindow : Window {
 
 			case WID_RAT_AUTORAIL:
 				HandlePlacePushButton(this, WID_RAT_AUTORAIL, GetRailTypeInfo(_cur_railtype)->cursor.autorail, HT_RAIL);
+				this->last_user_action = widget;
+				break;
+
+			case WID_RAT_PATHRAIL:
+				HandlePlacePushButton(this, WID_RAT_PATHRAIL, GetRailTypeInfo(_cur_railtype)->cursor.autorail, HT_RAIL);
 				this->last_user_action = widget;
 				break;
 
@@ -639,6 +659,11 @@ struct BuildRailToolbarWindow : Window {
 				break;
 
 			case WID_RAT_AUTORAIL:
+				VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_PLACE_RAIL);
+				break;
+
+			case WID_RAT_PATHRAIL:
+				// activates on mouse down
 				VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_PLACE_RAIL);
 				break;
 
@@ -761,6 +786,11 @@ struct BuildRailToolbarWindow : Window {
 		VpSetPresizeRange(tile, _build_tunnel_endtile == 0 ? tile : _build_tunnel_endtile);
 	}
 
+	virtual void OnRealtimeTick(uint delta_ms)
+	{
+		// hello! A* calculation goes here
+	}
+
 	virtual EventState OnCTRLStateChange()
 	{
 		/* do not toggle Remove button by Ctrl when placing station */
@@ -770,6 +800,31 @@ struct BuildRailToolbarWindow : Window {
 
 	static HotkeyList hotkeys;
 };
+
+#include "table/autorail.h"
+
+/**
+ * checks whether rails are buildable in this given tile
+ */
+static bool isRailValid(TileIndex tile, uint autorail_type)
+{
+	int offset;
+	Slope tileSlope = GetTileSlope(tile);
+
+	Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
+	if (IsHalftileSlope(tileSlope)) {
+		static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
+		// CORNER_W, CORNER_S, CORNER_E, CORNER_N
+		Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
+		if (autorail_type != _lower_rail[halftile_corner]) {
+			/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
+			autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
+		}
+	}
+
+	offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
+	return (offset >= 0);
+}
 
 /**
  * Handler for global hotkeys of the BuildRailToolbarWindow.
@@ -822,6 +877,8 @@ static const NWidgetPart _nested_build_rail_widgets[] = {
 		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_RAT_BUILD_Y),
 						SetFill(0, 1), SetMinimalSize(22, 22), SetDataTip(SPR_IMG_RAIL_NW, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_RAILROAD_TRACK),
 		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_RAT_AUTORAIL),
+						SetFill(0, 1), SetMinimalSize(22, 22), SetDataTip(SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_AUTORAIL),
+		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_RAT_PATHRAIL),
 						SetFill(0, 1), SetMinimalSize(22, 22), SetDataTip(SPR_IMG_AUTORAIL, STR_RAIL_TOOLBAR_TOOLTIP_BUILD_AUTORAIL),
 
 		NWidget(WWT_PANEL, COLOUR_DARK_GREEN), SetMinimalSize(4, 22), SetDataTip(0x0, STR_NULL), EndContainer(),
