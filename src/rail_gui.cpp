@@ -419,6 +419,7 @@ static void HandleAutoSignalPlacement()
 struct BuildRailToolbarWindow : Window {
 	RailType railtype;    ///< Rail type to build.
 	int last_user_action; ///< Last started user action.
+	bool start_pathrail_placed;
 
 	BuildRailToolbarWindow(WindowDesc *desc, RailType railtype) : Window(desc)
 	{
@@ -426,6 +427,7 @@ struct BuildRailToolbarWindow : Window {
 		this->SetupRailToolbar(railtype);
 		this->DisableWidget(WID_RAT_REMOVE);
 		this->last_user_action = WIDGET_LIST_END;
+		this->start_pathrail_placed = false;
 
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
@@ -664,7 +666,13 @@ struct BuildRailToolbarWindow : Window {
 
 			case WID_RAT_PATHRAIL:
 				// activates on mouse down
-				VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_PLACE_RAIL);
+				// change DDSP based on whether this is the first or second placement I guess
+				// start_pathrail_placed is modified on mouseUp
+				if (!start_pathrail_placed) {
+					VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_PATH_START);
+				} else {
+					VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_PATH_END);
+				}
 				break;
 
 			case WID_RAT_DEMOLISH:
@@ -727,6 +735,17 @@ struct BuildRailToolbarWindow : Window {
 					HandleAutodirPlacement();
 					break;
 
+				case DDSP_PATH_START:
+					// set the starting tile and then start pathing
+					start_pathrail_placed = true;
+					break;
+
+				case DDSP_PATH_END:
+					HandleAutodirPlacement();
+					// set the ending tile, and if placement is successful then stop pathing
+					start_pathrail_placed = false;
+					break;
+
 				case DDSP_BUILD_SIGNALS:
 					HandleAutoSignalPlacement();
 					break;
@@ -772,6 +791,9 @@ struct BuildRailToolbarWindow : Window {
 		this->DisableWidget(WID_RAT_REMOVE);
 		this->SetWidgetDirty(WID_RAT_REMOVE);
 
+		// delete all progress I guess?
+		this->start_pathrail_placed = false;
+
 		DeleteWindowById(WC_BUILD_SIGNAL, TRANSPORT_RAIL);
 		DeleteWindowById(WC_BUILD_STATION, TRANSPORT_RAIL);
 		DeleteWindowById(WC_BUILD_DEPOT, TRANSPORT_RAIL);
@@ -784,6 +806,36 @@ struct BuildRailToolbarWindow : Window {
 	{
 		DoCommand(tile, _cur_railtype | (TRANSPORT_RAIL << 8), 0, DC_AUTO, CMD_BUILD_TUNNEL);
 		VpSetPresizeRange(tile, _build_tunnel_endtile == 0 ? tile : _build_tunnel_endtile);
+	}
+
+	#include "table/autorail.h"
+
+	/**
+	 * checks whether a particular rail is buildable in the given tile
+	 * abuses the highlighting table to determine a result
+	 * NOTE: does not check tile type or land ownership
+	 * @param tile The tile to be built on
+	 * @param autorail_type The orientation of autorail to be built
+	 * @return whether or not the rail can be built on this tile
+	 */
+	static bool isRailValid(TileIndex tile, uint autorail_type)
+	{
+		int offset;
+		Slope tileSlope = GetTileSlope(tile);
+
+		Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
+		if (IsHalftileSlope(tileSlope)) {
+			// CORNER_W, CORNER_S, CORNER_E, CORNER_N
+			static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
+			Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
+			if (autorail_type != _lower_rail[halftile_corner]) {
+				/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
+				autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
+			}
+		}
+
+		offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
+		return (offset >= 0);
 	}
 
 	virtual void OnRealtimeTick(uint delta_ms)
@@ -800,31 +852,6 @@ struct BuildRailToolbarWindow : Window {
 
 	static HotkeyList hotkeys;
 };
-
-#include "table/autorail.h"
-
-/**
- * checks whether rails are buildable in this given tile
- */
-static bool isRailValid(TileIndex tile, uint autorail_type)
-{
-	int offset;
-	Slope tileSlope = GetTileSlope(tile);
-
-	Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
-	if (IsHalftileSlope(tileSlope)) {
-		// CORNER_W, CORNER_S, CORNER_E, CORNER_N
-		static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
-		Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
-		if (autorail_type != _lower_rail[halftile_corner]) {
-			/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
-			autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
-		}
-	}
-
-	offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
-	return (offset >= 0);
-}
 
 /**
  * Handler for global hotkeys of the BuildRailToolbarWindow.
