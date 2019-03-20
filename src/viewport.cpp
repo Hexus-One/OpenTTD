@@ -2447,6 +2447,10 @@ void UpdateTileSelection()
 					x1 += TILE_SIZE / 2;
 					y1 += TILE_SIZE / 2;
 					break;
+				case HT_PATH:
+					// assign destination tile to this current tile... I guess
+					path_end_tile = TileVirtXY(pt.x, pt.y);
+					FALLTHROUGH;
 				case HT_RAIL:
 					/* Draw one highlighted tile in any direction */
 					new_drawstyle = GetAutorailHT(pt.x, pt.y);

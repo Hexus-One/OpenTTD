@@ -42,6 +42,75 @@
 
 #include "safeguards.h"
 
+struct _pathNode {
+	TileIndex tile; // location of node on map
+	uint16 g_cost; // weighted cost to this node
+	uint16 h_cost; // (under)estimate cost to goal unless you're not bothered with accuracy :^)
+	uint8 direction; // direction of the rail on the node, use Trackdir enums
+	uint8 turn_left;
+	uint8 turn_right;
+	uint8 hill_up;
+	uint8 hill_down;
+};
+
+typedef struct _pathNode *PathNode;
+
+struct comparePathNodes {
+	bool operator()(const PathNode& a, const PathNode& b)
+	{
+		uint af = a->g_cost + a->h_cost;
+		uint bf = b->g_cost + b->h_cost;
+		if (af == bf) {
+			return a->tile > b->tile;
+		} else {
+			return ((a->g_cost + a->h_cost) > (b->g_cost + b->h_cost));
+		}
+	}
+};
+
+PathNode newPathNode()
+{
+	PathNode newNode = new _pathNode;
+	return newNode;
+}
+
+#include <unordered_map>
+#include <queue>
+#include <vector>
+#include <unordered_set>
+
+typedef std::unordered_map<uint32, PathNode> _node_map;
+typedef std::priority_queue<PathNode, std::vector<PathNode>, comparePathNodes> _node_queue;
+typedef std::unordered_set<TileIndex> _tile_set;
+
+static _node_map AllNodes; // unordered map of all nodes (so we can search/delete them later)
+static _node_map ClosedSet; // unordered map of nodes in the closed set/already expanded sets
+static _node_queue OpenQueue; // priority queue of nodes discovered but to be expanded
+static _tile_set PathHighlightSet; // final set of finished path for highlighting
+
+TileIndex path_end_tile;
+
+/*
+ * table of neighbouring Trackdirs
+ * only 45 degree turns allowed, invalid turns are marked with INVALID_TRACKDIR
+ */
+static const uint8 _PathRailNeighbour[][3]{
+/* Source dir            Straight          Left              Right            */
+/* TRACKDIR_X_NE    */	{TRACKDIR_X_NE   , TRACKDIR_LEFT_N , TRACKDIR_LOWER_E},
+/* TRACKDIR_Y_SE    */	{TRACKDIR_Y_SE   , TRACKDIR_UPPER_E, TRACKDIR_LEFT_S },
+/* TRACKDIR_UPPER_E */	{TRACKDIR_LOWER_E, TRACKDIR_X_NE   , INVALID_TRACKDIR},
+/* TRACKDIR_LOWER_E */	{TRACKDIR_UPPER_E, INVALID_TRACKDIR, TRACKDIR_Y_SE   },
+/* TRACKDIR_LEFT_S  */	{TRACKDIR_RIGHT_S, INVALID_TRACKDIR, TRACKDIR_X_SW   },
+/* TRACKDIR_RIGHT_S */	{TRACKDIR_LEFT_S , TRACKDIR_Y_SE   , INVALID_TRACKDIR},
+/* TRACKDIR_RVREV_NE*/	{}, // (Road vehicle) reverse direction
+/* TRACKDIR_RVREV_SE*/	{}, // (Road vehicle) reverse direction
+/* TRACKDIR_X_SW    */	{TRACKDIR_X_SW   , TRACKDIR_RIGHT_S, TRACKDIR_UPPER_W},
+/* TRACKDIR_Y_NW    */	{TRACKDIR_Y_NW   , TRACKDIR_LOWER_W, TRACKDIR_RIGHT_N},
+/* TRACKDIR_UPPER_W */	{TRACKDIR_LOWER_W, INVALID_TRACKDIR, TRACKDIR_Y_NW   },
+/* TRACKDIR_LOWER_W */	{TRACKDIR_UPPER_W, TRACKDIR_X_SW   , INVALID_TRACKDIR},
+/* TRACKDIR_LEFT_N  */	{TRACKDIR_RIGHT_N, TRACKDIR_Y_NW   , INVALID_TRACKDIR},
+/* TRACKDIR_RIGHT_N */	{TRACKDIR_LEFT_N , INVALID_TRACKDIR, TRACKDIR_X_NE   }
+};
 
 static RailType _cur_railtype;               ///< Rail type of the current build-rail toolbar.
 static bool _remove_button_clicked;          ///< Flag whether 'remove' toggle-button is currently enabled
@@ -414,12 +483,42 @@ static void HandleAutoSignalPlacement()
 			CcPlaySound_SPLAT_RAIL);
 }
 
+#include "table/autorail.h"
+
+/**
+ * checks whether a particular rail is buildable in the given tile
+ * abuses the highlighting table to determine a result
+ * NOTE: does not check tile type or land ownership
+ * @param tile The tile to be built on
+ * @param autorail_type The orientation of autorail to be built
+ * @return whether or not the rail can be built on this tile
+ */
+static bool isRailValid(TileIndex tile, uint autorail_type)
+{
+	int offset;
+	Slope tileSlope = GetTileSlope(tile);
+
+	Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
+	if (IsHalftileSlope(tileSlope)) {
+		// CORNER_W, CORNER_S, CORNER_E, CORNER_N
+		static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
+		Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
+		if (autorail_type != _lower_rail[halftile_corner]) {
+			/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
+			autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
+		}
+	}
+
+	offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
+	return (offset >= 0);
+}
 
 /** Rail toolbar management class. */
 struct BuildRailToolbarWindow : Window {
 	RailType railtype;    ///< Rail type to build.
 	int last_user_action; ///< Last started user action.
-	bool start_pathrail_placed;
+	bool start_pathrail_placed; // checks whether the start tile has been placed, also determines whether to search for paths
+	uint8 path_end_dir;
 
 	BuildRailToolbarWindow(WindowDesc *desc, RailType railtype) : Window(desc)
 	{
@@ -427,7 +526,8 @@ struct BuildRailToolbarWindow : Window {
 		this->SetupRailToolbar(railtype);
 		this->DisableWidget(WID_RAT_REMOVE);
 		this->last_user_action = WIDGET_LIST_END;
-		this->start_pathrail_placed = false;
+
+		ResetPathBuilder();
 
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
@@ -570,7 +670,7 @@ struct BuildRailToolbarWindow : Window {
 				break;
 
 			case WID_RAT_PATHRAIL:
-				HandlePlacePushButton(this, WID_RAT_PATHRAIL, GetRailTypeInfo(_cur_railtype)->cursor.autorail, HT_RAIL);
+				HandlePlacePushButton(this, WID_RAT_PATHRAIL, GetRailTypeInfo(_cur_railtype)->cursor.autorail, HT_PATH);
 				this->last_user_action = widget;
 				break;
 
@@ -716,7 +816,8 @@ struct BuildRailToolbarWindow : Window {
 	virtual void OnPlaceDrag(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt)
 	{
 		/* no dragging if you have pressed the convert button */
-		if (FindWindowById(WC_BUILD_SIGNAL, 0) != NULL && _convert_signal_button && this->IsWidgetLowered(WID_RAT_BUILD_SIGNALS)) return;
+		if (FindWindowById(WC_BUILD_SIGNAL, 0) != NULL && _convert_signal_button && this->IsWidgetLowered(WID_RAT_BUILD_SIGNALS)
+			|| IsWidgetLowered(WID_RAT_PATHRAIL)) return;
 
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 	}
@@ -724,6 +825,7 @@ struct BuildRailToolbarWindow : Window {
 	virtual void OnPlaceMouseUp(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile)
 	{
 		if (pt.x != -1) {
+			PathNode tempNode;
 			switch (select_proc) {
 				default: NOT_REACHED();
 				case DDSP_BUILD_BRIDGE:
@@ -737,13 +839,30 @@ struct BuildRailToolbarWindow : Window {
 
 				case DDSP_PATH_START:
 					// set the starting tile and then start pathing
+					// todo: check the tile/rail is valid
+					tempNode = newPathNode();
+					tempNode->tile = start_tile;
+					tempNode->direction = TRACKDIR_X_NE; // arbitrarily set :^)
+					tempNode->g_cost = 0;
+					tempNode->h_cost = -1; // i.e. int_max
+					// ignore turn values for now
+
+					OpenQueue.push(tempNode);
+					AllNodes.insert({ (tempNode->tile << 4) + tempNode->direction, tempNode });
+
 					start_pathrail_placed = true;
 					break;
 
 				case DDSP_PATH_END:
 					HandleAutodirPlacement();
 					// set the ending tile, and if placement is successful then stop pathing
-					start_pathrail_placed = false;
+					path_end_tile = start_tile;
+					path_end_dir = TRACKDIR_X_NE;
+
+					// result: start and end tile are the same without dragging
+					GenericPlaceRail(start_tile, HT_DIR_X);
+					GenericPlaceRail(end_tile, HT_DIR_Y);
+					ResetPathBuilder();
 					break;
 
 				case DDSP_BUILD_SIGNALS:
@@ -792,7 +911,7 @@ struct BuildRailToolbarWindow : Window {
 		this->SetWidgetDirty(WID_RAT_REMOVE);
 
 		// delete all progress I guess?
-		this->start_pathrail_placed = false;
+		ResetPathBuilder();
 
 		DeleteWindowById(WC_BUILD_SIGNAL, TRANSPORT_RAIL);
 		DeleteWindowById(WC_BUILD_STATION, TRANSPORT_RAIL);
@@ -808,39 +927,29 @@ struct BuildRailToolbarWindow : Window {
 		VpSetPresizeRange(tile, _build_tunnel_endtile == 0 ? tile : _build_tunnel_endtile);
 	}
 
-	#include "table/autorail.h"
-
-	/**
-	 * checks whether a particular rail is buildable in the given tile
-	 * abuses the highlighting table to determine a result
-	 * NOTE: does not check tile type or land ownership
-	 * @param tile The tile to be built on
-	 * @param autorail_type The orientation of autorail to be built
-	 * @return whether or not the rail can be built on this tile
-	 */
-	static bool isRailValid(TileIndex tile, uint autorail_type)
-	{
-		int offset;
-		Slope tileSlope = GetTileSlope(tile);
-
-		Slope autorail_tileh = RemoveHalftileSlope(tileSlope);
-		if (IsHalftileSlope(tileSlope)) {
-			// CORNER_W, CORNER_S, CORNER_E, CORNER_N
-			static const uint _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL };
-			Corner halftile_corner = GetHalftileSlopeCorner(tileSlope);
-			if (autorail_type != _lower_rail[halftile_corner]) {
-				/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
-				autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
-			}
-		}
-
-		offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
-		return (offset >= 0);
-	}
-
 	virtual void OnRealtimeTick(uint delta_ms)
 	{
 		// hello! A* calculation goes here
+		uint8 steps = 0;
+		while (steps < 1000 && !OpenQueue.empty()) {
+			PathNode currNode = OpenQueue.top();
+			OpenQueue.pop();
+			++steps;
+
+			// check if we've found the destination... I guess
+			// if the direction hasn't been set (i.e. we're just hovering around) then don't be fussy about it
+			if (currNode->tile == path_end_tile &&
+				(currNode->direction == path_end_dir || path_end_dir == INVALID_TRACKDIR)) {
+				// congratulations :)
+				break;
+			}
+			// now we check neighbours
+			// i.e. 0=straight, 1=left or 2=right
+			uint8 dir;
+			for (dir = 0; dir < 2; ++dir) {
+				
+			}
+		}
 	}
 
 	virtual EventState OnCTRLStateChange()
@@ -848,6 +957,27 @@ struct BuildRailToolbarWindow : Window {
 		/* do not toggle Remove button by Ctrl when placing station */
 		if (!this->IsWidgetLowered(WID_RAT_BUILD_STATION) && !this->IsWidgetLowered(WID_RAT_BUILD_WAYPOINT) && RailToolbar_CtrlChanged(this)) return ES_HANDLED;
 		return ES_NOT_HANDLED;
+	}
+
+	/**
+	 * Reset all pathbuilder related variables.
+	 */
+	void ResetPathBuilder()
+	{
+		start_pathrail_placed = false;
+		path_end_tile = INVALID_TILE;
+		path_end_dir = INVALID_TRACKDIR;
+
+		while (!OpenQueue.empty()) {
+			OpenQueue.pop();
+		}
+		ClosedSet.clear();
+		PathHighlightSet.clear();
+		_node_map::iterator it;
+		for (it = AllNodes.begin(); it != AllNodes.end(); it++) {
+			delete(it->second);
+		}
+		AllNodes.clear();
 	}
 
 	static HotkeyList hotkeys;
