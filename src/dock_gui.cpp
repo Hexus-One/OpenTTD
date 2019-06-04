@@ -249,8 +249,11 @@ struct BuildDocksToolbarWindow : Window {
 				DoCommandP(tile, GetOtherAqueductEnd(tile), TRANSPORT_WATER << 15, CMD_BUILD_BRIDGE | CMD_MSG(STR_ERROR_CAN_T_BUILD_AQUEDUCT_HERE), CcBuildBridge);
 				break;
 
-			case WID_DT_SHIP_PLANNER: // Build canal button
-				VpStartPlaceSizing(tile, (_game_mode == GM_EDITOR) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_CREATE_WATER);
+			case WID_DT_SHIP_PLANNER: // Ship planner button
+				if (IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile))) {
+					ship_planner_start_tile = tile;
+					VpStartPlaceSizing(tile, (_game_mode == GM_EDITOR) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_SHIP_PLANNER);
+				}
 				break;
 
 			default: NOT_REACHED();
@@ -261,6 +264,7 @@ struct BuildDocksToolbarWindow : Window {
 	{
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 
+		// reassign the goal tile for ship planner
 		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER) && pt.x != -1) {
 			int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 			int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
@@ -284,6 +288,9 @@ struct BuildDocksToolbarWindow : Window {
 					break;
 				case DDSP_CREATE_RIVER:
 					DoCommandP(end_tile, start_tile, WATER_CLASS_RIVER, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_PLACE_RIVERS), CcPlaySound_SPLAT_WATER);
+					break;
+				case DDSP_SHIP_PLANNER:
+					// build the path if it exists
 					break;
 
 				default: break;
