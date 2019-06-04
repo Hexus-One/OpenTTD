@@ -27,6 +27,7 @@ enum DockToolbarWidgets {
 	WID_DT_BUOY,           ///< Build buoy button.
 	WID_DT_RIVER,          ///< Build river button (in scenario editor).
 	WID_DT_BUILD_AQUEDUCT, ///< Build aqueduct button.
+	WID_DT_SHIP_PLANNER,   ///< Ship planner button.
 
 	WID_DT_INVALID,        ///< Used to initialize a variable.
 };

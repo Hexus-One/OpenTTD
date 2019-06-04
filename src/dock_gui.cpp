@@ -92,12 +92,18 @@ static TileIndex GetOtherAqueductEnd(TileIndex tile_from, TileIndex *tile_to = n
 /** Toolbar window for constructing water infrastructure. */
 struct BuildDocksToolbarWindow : Window {
 	DockToolbarWidgets last_clicked_widget; ///< Contains the last widget that has been clicked on this toolbar.
+	TileIndex ship_planner_start_tile;
+	TileIndex ship_planner_goal_tile;
 
 	BuildDocksToolbarWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
 	{
 		this->last_clicked_widget = WID_DT_INVALID;
 		this->InitNested(window_number);
 		this->OnInvalidateData();
+
+		this->ship_planner_start_tile = INVALID_TILE;
+		this->ship_planner_goal_tile = INVALID_TILE;
+
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
 
@@ -125,6 +131,28 @@ struct BuildDocksToolbarWindow : Window {
 		if (!can_build) {
 			DeleteWindowById(WC_BUILD_STATION, TRANSPORT_WATER);
 			DeleteWindowById(WC_BUILD_DEPOT, TRANSPORT_WATER);
+		}
+	}
+
+	virtual void DrawWidget(const Rect &r, int widget) const
+	{
+		if (widget == WID_DT_SHIP_PLANNER) {
+			// a bit of funky maths to shrink the cargo-flow icon
+			ZoomLevel temp_zoom;
+			switch (_gui_zoom) {
+			case ZOOM_LVL_NORMAL:
+				temp_zoom = ZOOM_LVL_OUT_2X;
+				break;
+			case ZOOM_LVL_OUT_2X:
+				temp_zoom = ZOOM_LVL_OUT_4X;
+				break;
+			case ZOOM_LVL_OUT_4X:
+				temp_zoom = ZOOM_LVL_OUT_8X;
+				break;
+			}
+			Dimension d = GetSpriteSize(SPR_IMG_CARGOFLOW, (Point *)0, temp_zoom);
+			uint offset = this->IsWidgetLowered(WID_DT_SHIP_PLANNER) ? 1 : 0;
+			DrawSprite(SPR_IMG_CARGOFLOW, PAL_NONE, (r.left + r.right - d.width) / 2 + offset, (r.top + r.bottom - d.height) / 2 + offset, (const SubSprite *)0, temp_zoom);
 		}
 	}
 
@@ -165,6 +193,10 @@ struct BuildDocksToolbarWindow : Window {
 
 			case WID_DT_BUILD_AQUEDUCT: // Build aqueduct button
 				HandlePlacePushButton(this, WID_DT_BUILD_AQUEDUCT, SPR_CURSOR_AQUEDUCT, HT_SPECIAL);
+				break;
+
+			case WID_DT_SHIP_PLANNER: // Ship planner button
+				HandlePlacePushButton(this, WID_DT_SHIP_PLANNER, SPR_CURSOR_CANAL, HT_RECT);
 				break;
 
 			default: return;
@@ -217,6 +249,10 @@ struct BuildDocksToolbarWindow : Window {
 				DoCommandP(tile, GetOtherAqueductEnd(tile), TRANSPORT_WATER << 15, CMD_BUILD_BRIDGE | CMD_MSG(STR_ERROR_CAN_T_BUILD_AQUEDUCT_HERE), CcBuildBridge);
 				break;
 
+			case WID_DT_SHIP_PLANNER: // Build canal button
+				VpStartPlaceSizing(tile, (_game_mode == GM_EDITOR) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_CREATE_WATER);
+				break;
+
 			default: NOT_REACHED();
 		}
 	}
@@ -224,6 +260,16 @@ struct BuildDocksToolbarWindow : Window {
 	void OnPlaceDrag(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt) override
 	{
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+
+		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER) && pt.x != -1) {
+			int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
+			int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
+			ship_planner_goal_tile = TileXY(gx, gy);
+			if (!IsTileFlat(ship_planner_goal_tile) ||
+				(!IsTileType(ship_planner_goal_tile, MP_CLEAR) && !IsTileType(ship_planner_goal_tile, MP_TREES) && !IsWaterTile(ship_planner_goal_tile))) {
+				ship_planner_goal_tile = INVALID_TILE;
+			}
+		}
 	}
 
 	void OnPlaceMouseUp(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
@@ -276,6 +322,11 @@ struct BuildDocksToolbarWindow : Window {
 		VpSetPresizeRange(tile_from, tile_to);
 	}
 
+	void OnRealtimeTick(uint delta_ms) override
+	{
+
+	}
+
 	static HotkeyList hotkeys;
 };
 
@@ -303,6 +354,7 @@ static Hotkey dockstoolbar_hotkeys[] = {
 	Hotkey('6', "buoy", WID_DT_BUOY),
 	Hotkey('7', "river", WID_DT_RIVER),
 	Hotkey(_dockstoolbar_aqueduct_keys, "aqueduct", WID_DT_BUILD_AQUEDUCT),
+	Hotkey('9', "ship_planner", WID_DT_SHIP_PLANNER),
 	HOTKEY_LIST_END
 };
 HotkeyList BuildDocksToolbarWindow::hotkeys("dockstoolbar", dockstoolbar_hotkeys, DockToolbarGlobalHotkeys);
@@ -326,6 +378,7 @@ static const NWidgetPart _nested_build_docks_toolbar_widgets[] = {
 		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_DT_STATION), SetMinimalSize(22, 22), SetFill(0, 1), SetDataTip(SPR_IMG_SHIP_DOCK, STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP),
 		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_DT_BUOY), SetMinimalSize(22, 22), SetFill(0, 1), SetDataTip(SPR_IMG_BUOY, STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP),
 		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_DT_BUILD_AQUEDUCT), SetMinimalSize(23, 22), SetFill(0, 1), SetDataTip(SPR_IMG_AQUEDUCT, STR_WATERWAYS_TOOLBAR_BUILD_AQUEDUCT_TOOLTIP),
+		NWidget(WWT_IMGBTN, COLOUR_DARK_GREEN, WID_DT_SHIP_PLANNER), SetMinimalSize(22, 22), SetFill(0, 1), SetDataTip(SPR_IMG_BUILD_CANAL, STR_WATERWAYS_TOOLBAR_SHIP_PLANNER_TOOLTIP),
 	EndContainer(),
 };
 

@@ -2478,6 +2478,7 @@ STR_WATERWAYS_TOOLBAR_BUILD_DEPOT_TOOLTIP                       :{BLACK}Build sh
 STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP                        :{BLACK}Build ship dock. Ctrl enables joining stations. Shift toggles building/showing cost estimate
 STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP                              :{BLACK}Place a buoy which can be used as a waypoint. Shift toggles building/showing cost estimate
 STR_WATERWAYS_TOOLBAR_BUILD_AQUEDUCT_TOOLTIP                    :{BLACK}Build aqueduct. Shift toggles building/showing cost estimate
+STR_WATERWAYS_TOOLBAR_SHIP_PLANNER_TOOLTIP                      :{BLACK}Ship planner. Click and drag to create a canal from start to goal.
 STR_WATERWAYS_TOOLBAR_CREATE_LAKE_TOOLTIP                       :{BLACK}Define water area.{}Make a canal, unless Ctrl is held down at sea level, when it will flood the surroundings instead
 STR_WATERWAYS_TOOLBAR_CREATE_RIVER_TOOLTIP                      :{BLACK}Place rivers
 
