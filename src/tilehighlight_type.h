@@ -22,6 +22,7 @@ enum HighLightStyle {
 	HT_POINT     = 0x020, ///< point (lower land, raise land, level land, ...)
 	HT_SPECIAL   = 0x030, ///< special mode used for highlighting while dragging (and for tunnels/docks)
 	HT_DRAG      = 0x040, ///< dragging items in the depot windows
+	HT_START_END = 0x060, ///< like rectangle highlight but only highlight start and end tiles
 	HT_LINE      = 0x008, ///< used for autorail highlighting (longer stretches), lower bits: direction
 	HT_RAIL      = 0x080, ///< autorail (one piece), lower bits: direction
 	HT_VEHICLE   = 0x100, ///< vehicle is accepted as target as well (bitmask)

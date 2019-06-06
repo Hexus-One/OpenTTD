@@ -196,7 +196,7 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_SHIP_PLANNER: // Ship planner button
-				HandlePlacePushButton(this, WID_DT_SHIP_PLANNER, SPR_CURSOR_CANAL, HT_RECT);
+				HandlePlacePushButton(this, WID_DT_SHIP_PLANNER, SPR_CURSOR_CANAL, HT_START_END);
 				break;
 
 			default: return;

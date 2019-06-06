@@ -1101,6 +1101,13 @@ static void DrawTileSelection(const TileInfo *ti)
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
 			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
+		} else if (_thd.drawstyle == HT_START_END) {
+			// only draw if on the start/end tiles
+			if (ti->tile == TileVirtXY(_thd.pos.x, _thd.pos.y) ||
+				ti->tile == TileVirtXY(_thd.selstart.x, _thd.selstart.y) ||
+				ti->tile == TileVirtXY(_thd.selend.x, _thd.selend.y)) {
+				DrawTileSelectionRect(ti, PAL_NONE);
+			}
 		} else if (_thd.drawstyle & HT_POINT) {
 			/* Figure out the Z coordinate for the single dot. */
 			int z = 0;
@@ -2524,6 +2531,9 @@ void UpdateTileSelection()
 				case HT_RECT:
 					new_drawstyle = HT_RECT;
 					break;
+				case HT_START_END:
+					new_drawstyle = HT_START_END;
+					break;
 				case HT_POINT:
 					new_drawstyle = HT_POINT;
 					x1 += TILE_SIZE / 2;
@@ -2625,6 +2635,9 @@ void VpStartPlaceSizing(TileIndex tile, ViewportPlaceMethod method, ViewportDrag
 	if ((_thd.place_mode & HT_DRAG_MASK) == HT_RECT) {
 		_thd.place_mode = HT_SPECIAL | others;
 		_thd.next_drawstyle = HT_RECT | others;
+	} else if ((_thd.place_mode & HT_DRAG_MASK) == HT_START_END) {
+		_thd.place_mode = HT_SPECIAL | others;
+		_thd.next_drawstyle = HT_START_END | others;
 	} else if (_thd.place_mode & (HT_RAIL | HT_LINE)) {
 		_thd.place_mode = HT_SPECIAL | others;
 		_thd.next_drawstyle = _thd.drawstyle | others;
@@ -2729,6 +2742,7 @@ static bool SwapDirection(HighLightStyle style, TileIndex start_tile, TileIndex 
 		case HT_LINE: return (end_x > start_x || (end_x == start_x && end_y > start_y));
 
 		case HT_RECT:
+		case HT_START_END:
 		case HT_POINT: return (end_x != start_x && end_y < start_y);
 		default: NOT_REACHED();
 	}
@@ -3265,6 +3279,8 @@ EventState VpHandlePlaceSizingDrag()
 	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
 	if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) {
 		_thd.place_mode = HT_RECT | others;
+	} else if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_START_END) {
+		_thd.place_mode = HT_START_END | others;
 	} else if (_thd.select_method & VPM_SIGNALDIRS) {
 		_thd.place_mode = HT_RECT | others;
 	} else if (_thd.select_method & VPM_RAILDIRS) {
