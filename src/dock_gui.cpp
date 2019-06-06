@@ -262,18 +262,20 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnPlaceDrag(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt) override
 	{
-		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
-
 		// reassign the goal tile for ship planner
-		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER) && pt.x != -1) {
-			int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
-			int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
-			ship_planner_goal_tile = TileXY(gx, gy);
-			if (!IsTileFlat(ship_planner_goal_tile) ||
-				(!IsTileType(ship_planner_goal_tile, MP_CLEAR) && !IsTileType(ship_planner_goal_tile, MP_TREES) && !IsWaterTile(ship_planner_goal_tile))) {
-				ship_planner_goal_tile = INVALID_TILE;
+		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER)) {
+			if (pt.x != -1) {
+				int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
+				int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
+				ship_planner_goal_tile = TileXY(gx, gy);
+				if (!IsTileFlat(ship_planner_goal_tile) ||
+					(!IsTileType(ship_planner_goal_tile, MP_CLEAR) && !IsTileType(ship_planner_goal_tile, MP_TREES) && !IsWaterTile(ship_planner_goal_tile))) {
+					ship_planner_goal_tile = INVALID_TILE;
+				}
 			}
+			return;
 		}
+		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 	}
 
 	void OnPlaceMouseUp(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
@@ -291,6 +293,8 @@ struct BuildDocksToolbarWindow : Window {
 					break;
 				case DDSP_SHIP_PLANNER:
 					// build the path if it exists
+					this->ship_planner_start_tile = INVALID_TILE;
+					this->ship_planner_goal_tile = INVALID_TILE;					
 					break;
 
 				default: break;
