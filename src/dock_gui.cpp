@@ -93,7 +93,7 @@ static TileIndex GetOtherAqueductEnd(TileIndex tile_from, TileIndex *tile_to = n
 struct BuildDocksToolbarWindow : Window {
 	DockToolbarWidgets last_clicked_widget; ///< Contains the last widget that has been clicked on this toolbar.
 	TileIndex ship_planner_start_tile;
-	TileIndex ship_planner_goal_tile;
+	TileIndex ship_planner_end_tile;
 
 	BuildDocksToolbarWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
 	{
@@ -102,7 +102,7 @@ struct BuildDocksToolbarWindow : Window {
 		this->OnInvalidateData();
 
 		this->ship_planner_start_tile = INVALID_TILE;
-		this->ship_planner_goal_tile = INVALID_TILE;
+		this->ship_planner_end_tile = INVALID_TILE;
 
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
@@ -252,7 +252,7 @@ struct BuildDocksToolbarWindow : Window {
 			case WID_DT_SHIP_PLANNER: // Ship planner button
 				if (IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile))) {
 					ship_planner_start_tile = tile;
-					VpStartPlaceSizing(tile, (_game_mode == GM_EDITOR) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_SHIP_PLANNER);
+					VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_SHIP_PLANNER);
 				}
 				break;
 
@@ -262,20 +262,19 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnPlaceDrag(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt) override
 	{
+		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 		// reassign the goal tile for ship planner
 		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER)) {
 			if (pt.x != -1) {
 				int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 				int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
-				ship_planner_goal_tile = TileXY(gx, gy);
-				if (!IsTileFlat(ship_planner_goal_tile) ||
-					(!IsTileType(ship_planner_goal_tile, MP_CLEAR) && !IsTileType(ship_planner_goal_tile, MP_TREES) && !IsWaterTile(ship_planner_goal_tile))) {
-					ship_planner_goal_tile = INVALID_TILE;
+				ship_planner_end_tile = TileXY(gx, gy);
+				if (!IsTileFlat(ship_planner_end_tile) ||
+					(!IsTileType(ship_planner_end_tile, MP_CLEAR) && !IsTileType(ship_planner_end_tile, MP_TREES) && !IsWaterTile(ship_planner_end_tile))) {
+					ship_planner_end_tile = INVALID_TILE;
 				}
 			}
-			return;
 		}
-		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 	}
 
 	void OnPlaceMouseUp(ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
@@ -291,11 +290,20 @@ struct BuildDocksToolbarWindow : Window {
 				case DDSP_CREATE_RIVER:
 					DoCommandP(end_tile, start_tile, WATER_CLASS_RIVER, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_PLACE_RIVERS), CcPlaySound_SPLAT_WATER);
 					break;
-				case DDSP_SHIP_PLANNER:
+				case DDSP_SHIP_PLANNER: {
+					// sometimes the drag function doesn't execute between mouseDown and Up - usually only when the user clicks too quickly.
+					// if they click too quickly, we assume they just clicked on a single tile, so behave just like the regular canal tool
+					int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
+					int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
+					if (TileXY(gx, gy) == ship_planner_start_tile) {
+						DoCommandP(end_tile, start_tile, (_game_mode == GM_EDITOR && _ctrl_pressed) ? WATER_CLASS_SEA : WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+						break;
+					}
 					// build the path if it exists
 					this->ship_planner_start_tile = INVALID_TILE;
-					this->ship_planner_goal_tile = INVALID_TILE;					
+					this->ship_planner_end_tile = INVALID_TILE;
 					break;
+				}
 
 				default: break;
 			}
@@ -335,7 +343,29 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-
+		// Put node_start in the OPEN list with {(node_start) = h(node_start) (initialization)
+		// while the OPEN list is not empty {
+			// Take from the open list the node node_current with the lowest
+				// f(node_current) = g(node_current) + h(node_current)
+			// if node_current is node_goal we have found the solution; break
+			// Generate each state node_successor that come after node_current
+			// for each node_successor of node_current {
+				// Set successor_current_cost = g(node_current) + w(node_current, node_successor)
+				// if node_successor is in the OPEN list {
+					// if g(node_successor)  successor_current_cost continue (to line 20)
+				// } else if node_successor is in the CLOSED list {
+					// if g(node_successor)  successor_current_cost continue (to line 20)
+					// Move node_successor from the CLOSED list to the OPEN list
+				// } else {
+					// Add node_successor to the OPEN list
+					// Set h(node_successor) to be the heuristic distance to node_goal
+				// }
+				// Set g(node_successor) = successor_current_cost
+				// Set the parent of node_successor to node_current
+			// }
+			// Add node_current to the CLOSED list
+		// }
+		// if (node_current != node_goal) exit with error(the OPEN list is empty)
 	}
 
 	static HotkeyList hotkeys;
