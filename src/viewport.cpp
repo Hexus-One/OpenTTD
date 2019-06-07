@@ -1104,7 +1104,9 @@ draw_inner:
 		} else if (_thd.drawstyle == HT_START_END) { // I'm too afraid to use binary ops because the current system confuses me enough already
 			// only draw if on the start/end tiles
 			if ((ship_planner_start_tile == INVALID_TILE && ti->tile == TileVirtXY(_thd.pos.x, _thd.pos.y)) || ti->tile == TileVirtXY(_thd.selstart.x, _thd.selstart.y) || ti->tile == TileVirtXY(_thd.selend.x, _thd.selend.y)) {
-				DrawTileSelectionRect(ti, PAL_NONE);
+				// XOR conditional expression, please don't ask how this works
+				// TODO: Change IsTileFlat to a more precise validity check for candidate tiles (eg. checking tile type as well as slope)
+				DrawTileSelectionRect(ti, !IsTileFlat(ti->tile) || (ship_planner_start_tile == INVALID_TILE) != (ship_planner_end_tile == INVALID_TILE) ? PALETTE_SEL_TILE_RED : PAL_NONE);
 			}
 		} else if (_thd.drawstyle & HT_POINT) {
 			/* Figure out the Z coordinate for the single dot. */

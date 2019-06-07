@@ -33,6 +33,29 @@
 
 #include "safeguards.h"
 
+#include <queue>
+#include <unordered_map>
+
+struct CompareShipNodes {
+	bool operator ()(const ShipNode& a, const ShipNode& b)
+	{
+		if (a->f_cost == b->f_cost) {
+			return a->tile > b->tile;
+		} else {
+			return a->f_cost > b->f_cost;
+		}
+	}
+};
+
+std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> OpenSet; // Open set of nodes known but yet to be expanded
+std::unordered_map<uint64, ShipNode> ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
+
+// create a key from a node, for use in ClosedSet
+uint64 HashShipNode(const ShipNode& node)
+{
+	return ((node->dir << 8) + node->type) << 32 + node->tile;
+}
+
 TileIndex ship_planner_start_tile;
 TileIndex ship_planner_end_tile;
 
@@ -251,8 +274,14 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_SHIP_PLANNER: // Ship planner button
+				// check if this is a valid tile
 				if (IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile))) {
 					ship_planner_start_tile = tile;
+					// create the first node :O
+					ShipNode first_node = newShipNode(NULL, tile);
+					// Put node_start in the OPEN list with f(node_start) = h(node_start) (initialization)
+					OpenSet.push(first_node);
+
 					VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_SHIP_PLANNER);
 				}
 				break;
@@ -301,6 +330,8 @@ struct BuildDocksToolbarWindow : Window {
 						break;
 					}
 					// build the path if it exists
+
+					// and then clean up afterwards
 					ship_planner_start_tile = INVALID_TILE;
 					ship_planner_end_tile = INVALID_TILE;
 					break;
@@ -344,7 +375,6 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// Put node_start in the OPEN list with {(node_start) = h(node_start) (initialization)
 		// while the OPEN list is not empty {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)

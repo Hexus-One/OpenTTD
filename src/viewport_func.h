@@ -16,6 +16,35 @@
 #include "tile_map.h"
 #include "station_type.h"
 
+extern TileIndex ship_planner_start_tile;
+extern TileIndex ship_planner_end_tile;
+
+enum ShipPlannerTileType {
+	SPTT_WATER, // includes both ocean and river tiles (TODO: special handling for half ocean tiles)
+	SPTT_CANAL,
+	SPTT_LOCK,
+	SPTT_AQUEDUCT
+};
+
+typedef struct _ship_node {
+	_ship_node *prev; // pointer to predecessor node
+	TileIndex tile;
+	uint16 f_cost; // estimated cost of an optimal path that includes this tile
+	uint16 g_cost; // (known) cost from start node to this node
+	DiagDirection dir; // only used for locks and aqueducts - since canals can attach in any direction
+	ShipPlannerTileType type; // one of the above types
+} *ShipNode;
+
+inline ShipNode newShipNode(ShipNode prev = NULL, TileIndex tile = INVALID_TILE)
+{
+	ShipNode new_node = new _ship_node();
+	new_node->prev = prev;
+	new_node->tile = tile;
+	new_node->f_cost = 0;
+	new_node->g_cost = 0;
+	return new_node;
+}
+
 static const int TILE_HEIGHT_STEP = 50; ///< One Z unit tile height difference is displayed as 50m.
 
 void SetSelectionRed(bool);
