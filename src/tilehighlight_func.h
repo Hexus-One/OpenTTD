@@ -13,6 +13,9 @@
 #include "gfx_type.h"
 #include "tilehighlight_type.h"
 
+extern TileIndex ship_planner_start_tile;
+extern TileIndex ship_planner_end_tile;
+
 void PlaceProc_DemolishArea(TileIndex tile);
 bool GUIPlaceProcDragXY(ViewportDragDropSelectionProcess proc, TileIndex start_tile, TileIndex end_tile);
 

@@ -33,6 +33,9 @@
 
 #include "safeguards.h"
 
+TileIndex ship_planner_start_tile;
+TileIndex ship_planner_end_tile;
+
 static void ShowBuildDockStationPicker(Window *parent);
 static void ShowBuildDocksDepotPicker(Window *parent);
 
@@ -92,8 +95,6 @@ static TileIndex GetOtherAqueductEnd(TileIndex tile_from, TileIndex *tile_to = n
 /** Toolbar window for constructing water infrastructure. */
 struct BuildDocksToolbarWindow : Window {
 	DockToolbarWidgets last_clicked_widget; ///< Contains the last widget that has been clicked on this toolbar.
-	TileIndex ship_planner_start_tile;
-	TileIndex ship_planner_end_tile;
 
 	BuildDocksToolbarWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
 	{
@@ -101,8 +102,8 @@ struct BuildDocksToolbarWindow : Window {
 		this->InitNested(window_number);
 		this->OnInvalidateData();
 
-		this->ship_planner_start_tile = INVALID_TILE;
-		this->ship_planner_end_tile = INVALID_TILE;
+		ship_planner_start_tile = INVALID_TILE;
+		ship_planner_end_tile = INVALID_TILE;
 
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
@@ -300,8 +301,8 @@ struct BuildDocksToolbarWindow : Window {
 						break;
 					}
 					// build the path if it exists
-					this->ship_planner_start_tile = INVALID_TILE;
-					this->ship_planner_end_tile = INVALID_TILE;
+					ship_planner_start_tile = INVALID_TILE;
+					ship_planner_end_tile = INVALID_TILE;
 					break;
 				}
 
