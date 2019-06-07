@@ -1101,7 +1101,7 @@ static void DrawTileSelection(const TileInfo *ti)
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
 			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
-		} else if (_thd.drawstyle == HT_START_END) {
+		} else if (_thd.drawstyle == HT_START_END) { // I'm too afraid to use binary ops because the current system confuses me enough already
 			// only draw if on the start/end tiles
 			if (ti->tile == TileVirtXY(_thd.pos.x, _thd.pos.y) ||
 				ti->tile == TileVirtXY(_thd.selstart.x, _thd.selstart.y) ||
