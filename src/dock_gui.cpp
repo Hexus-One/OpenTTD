@@ -47,17 +47,32 @@ struct CompareShipNodes {
 	}
 };
 
-std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> OpenSet; // Open set of nodes known but yet to be expanded
-std::unordered_map<uint64, ShipNode> ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
+typedef std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> ShipNodeQueue;
+typedef std::unordered_map<uint64, ShipNode> ShipNodeSet;
+
+ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
+ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
+ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
 
 // create a key from a node, for use in ClosedSet
+uint64 HashShipNode(const DiagDirection& dir, const ShipPlannerTileType& type, const TileIndex& tile)
+{
+	return ((uint64)((dir << 8) | type) << 32) | tile;
+}
+
 uint64 HashShipNode(const ShipNode& node)
 {
-	return (((node->dir << 8) + node->type) << 32) + node->tile;
+	return HashShipNode(node->dir, node->type, node->tile);
 }
 
 TileIndex ship_planner_start_tile;
 TileIndex ship_planner_end_tile;
+
+// check whether a canal can be built on this tile
+bool ShipPlannerValidCanalTile(const TileIndex& tile)
+{
+	return IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile));
+}
 
 static void ShowBuildDockStationPicker(Window *parent);
 static void ShowBuildDocksDepotPicker(Window *parent);
@@ -275,12 +290,13 @@ struct BuildDocksToolbarWindow : Window {
 
 			case WID_DT_SHIP_PLANNER: // Ship planner button
 				// check if this is a valid tile
-				if (IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile))) {
+				if (ShipPlannerValidCanalTile(tile)) {
 					ship_planner_start_tile = tile;
 					// create the first node :O
-					ShipNode first_node = newShipNode(NULL, tile);
+					ShipNode first_node = newShipNode(tile);
 					// Put node_start in the OPEN list with f(node_start) = h(node_start) (initialization)
-					OpenSet.push(first_node);
+					OpenQueue.push(first_node);
+					OpenSet.insert({ HashShipNode(first_node), first_node });
 
 					VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_SHIP_PLANNER);
 				}
@@ -299,8 +315,7 @@ struct BuildDocksToolbarWindow : Window {
 				int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 				int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
 				ship_planner_end_tile = TileXY(gx, gy);
-				if (!IsTileFlat(ship_planner_end_tile) ||
-					(!IsTileType(ship_planner_end_tile, MP_CLEAR) && !IsTileType(ship_planner_end_tile, MP_TREES) && !IsWaterTile(ship_planner_end_tile))) {
+				if (!ShipPlannerValidCanalTile(ship_planner_end_tile)) {
 					ship_planner_end_tile = INVALID_TILE;
 				}
 			}
@@ -326,12 +341,21 @@ struct BuildDocksToolbarWindow : Window {
 					int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 					int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
 					if (TileXY(gx, gy) == ship_planner_start_tile) {
-						DoCommandP(end_tile, start_tile, (_game_mode == GM_EDITOR && _ctrl_pressed) ? WATER_CLASS_SEA : WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-						break;
+						DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+					} else {
+						// build the path if it exists
+						ShipNodeSet::iterator itr;
+						if ((itr = ClosedSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, ship_planner_end_tile))) != ClosedSet.end()) {
+							for (ShipNode temp = itr->second; temp != NULL; temp = temp->prev) {
+								DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+							}
+						}
 					}
-					// build the path if it exists
-
 					// and then clean up afterwards
+					OpenQueue = ShipNodeQueue();
+					OpenSet = ShipNodeSet();
+					ClosedSet = ShipNodeSet();
+
 					ship_planner_start_tile = INVALID_TILE;
 					ship_planner_end_tile = INVALID_TILE;
 					break;
@@ -375,28 +399,78 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// while the OPEN list is not empty {
+		// exit if both tiles aren't defined, or the goal has already been found
+		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE ||
+			ClosedSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, ship_planner_end_tile)) != ClosedSet.end()) {
+			return;
+		}
+		// while the OPEN list is not empty
+		while (!OpenQueue.empty()) {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
+			ShipNode node_current = OpenQueue.top();
+			OpenQueue.pop();
+			OpenSet.erase(HashShipNode(node_current));
 			// if node_current is node_goal we have found the solution; break
+			if (node_current->tile == ship_planner_end_tile && node_current->type == SPTT_CANAL) {
+				ClosedSet.insert({ HashShipNode(node_current), node_current });
+				// TODO: set some flag to mark the tile has been found?
+				break;
+			}
 			// Generate each state node_successor that come after node_current
-			// for each node_successor of node_current {
+			// For each direction, try each tile type
+			for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+				// for now we only deal with canals
+				// check it is valid for placement
+				TileIndex successor_tile = TileAddByDiagDir(node_current->tile, dir);
+				if (!ShipPlannerValidCanalTile(successor_tile)) {
+					continue;
+				}
 				// Set successor_current_cost = g(node_current) + w(node_current, node_successor)
-				// if node_successor is in the OPEN list {
-					// if g(node_successor)  successor_current_cost continue (to line 20)
-				// } else if node_successor is in the CLOSED list {
-					// if g(node_successor)  successor_current_cost continue (to line 20)
+				PlannerCost successor_current_cost = node_current->g_cost + 1; // magic number oops
+				// if node_successor is in the OPEN list
+				ShipNode node_successor;
+				ShipNodeSet::iterator itr;
+				if ((itr = OpenSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, successor_tile))) != OpenSet.end()) {
+					node_successor = itr->second;
+					// if g(node_successor) <= successor_current_cost continue (to line 20)
+					if (node_successor->g_cost <= successor_current_cost) {
+						continue;
+					}
+				// else if node_successor is in the CLOSED list
+				} else if ((itr = ClosedSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, successor_tile))) != ClosedSet.end()) {
+					node_successor = itr->second;
+					// if g(node_successor) <= successor_current_cost continue (to line 20)
+					if (node_successor->g_cost <= successor_current_cost) {
+						continue;
+					}
 					// Move node_successor from the CLOSED list to the OPEN list
-				// } else {
+					OpenQueue.push(node_successor);
+					OpenSet.insert({ itr->first, itr->second });
+					ClosedSet.erase(itr);
+				} else {
 					// Add node_successor to the OPEN list
+					// Which means it has to be created
+					node_successor = newShipNode(successor_tile);
+					node_successor->g_cost = successor_current_cost;
+					node_successor->type = SPTT_CANAL;
 					// Set h(node_successor) to be the heuristic distance to node_goal
-				// }
+					node_successor->f_cost = node_successor->g_cost + DistanceMax(successor_tile, ship_planner_end_tile);
+					// Add it to OpenQueue
+					OpenQueue.push(node_successor);
+					OpenSet.insert({ HashShipNode(node_successor), node_successor });
+				}
 				// Set g(node_successor) = successor_current_cost
+				node_successor->g_cost = successor_current_cost;
+				node_successor->f_cost = node_successor->g_cost + DistanceMax(successor_tile, ship_planner_end_tile);
 				// Set the parent of node_successor to node_current
-			// }
+				node_successor->prev = node_current;
+			}
 			// Add node_current to the CLOSED list
-		// }
+			ClosedSet.insert({ HashShipNode(node_current), node_current });
+		}
 		// if (node_current != node_goal) exit with error(the OPEN list is empty)
+		// in our case, do nothing I guess
 	}
 
 	static HotkeyList hotkeys;
