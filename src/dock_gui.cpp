@@ -53,7 +53,7 @@ std::unordered_map<uint64, ShipNode> ClosedSet; // Nodes that have been visited 
 // create a key from a node, for use in ClosedSet
 uint64 HashShipNode(const ShipNode& node)
 {
-	return ((node->dir << 8) + node->type) << 32 + node->tile;
+	return (((node->dir << 8) + node->type) << 32) + node->tile;
 }
 
 TileIndex ship_planner_start_tile;
