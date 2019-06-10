@@ -50,6 +50,8 @@ struct CompareShipNodes {
 typedef std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> ShipNodeQueue;
 typedef std::unordered_map<uint64, ShipNode> ShipNodeSet;
 
+planner_tileindex_set PathHighlightSet;
+
 ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
 ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
 ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
@@ -397,14 +399,35 @@ struct BuildDocksToolbarWindow : Window {
 		VpSetPresizeRange(tile_from, tile_to);
 	}
 
+	// update the selected tiles for path highlighting
+	// todo: change to unordered map (associate tile highlight with each tile)
+	// also only change if the set actually changes
+	// also: implement markDirty for the tiles
+	void UpdatePathSet(ShipNode end = NULL)
+	{
+		PathHighlightSet = planner_tileindex_set();
+		while (end != NULL) {
+			PathHighlightSet.insert(end->tile);
+			end = end->prev;
+		}
+	}
+
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// exit if both tiles aren't defined, or the goal has already been found
-		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE ||
-			ClosedSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, ship_planner_end_tile)) != ClosedSet.end()) {
+		// exit if both tiles aren't defined,
+		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE) {
+			UpdatePathSet();
 			return;
 		}
+		// or the goal has already been found
+		ShipNodeSet::iterator itr;
+		if ((itr = ClosedSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, ship_planner_end_tile))) != ClosedSet.end()) {
+			UpdatePathSet(itr->second);
+			return;
+		}
+		// Do the A* thingo
 		// while the OPEN list is not empty
+		// TODO: Add time limit so as not to lag the whole thing
 		while (!OpenQueue.empty()) {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
@@ -414,7 +437,7 @@ struct BuildDocksToolbarWindow : Window {
 			// if node_current is node_goal we have found the solution; break
 			if (node_current->tile == ship_planner_end_tile && node_current->type == SPTT_CANAL) {
 				ClosedSet.insert({ HashShipNode(node_current), node_current });
-				// TODO: set some flag to mark the tile has been found?
+				UpdatePathSet(node_current);
 				break;
 			}
 			// Generate each state node_successor that come after node_current
@@ -427,10 +450,9 @@ struct BuildDocksToolbarWindow : Window {
 					continue;
 				}
 				// Set successor_current_cost = g(node_current) + w(node_current, node_successor)
-				PlannerCost successor_current_cost = node_current->g_cost + 1; // magic number oops
+				PathCost successor_current_cost = node_current->g_cost + 1; // magic number oops
 				// if node_successor is in the OPEN list
 				ShipNode node_successor;
-				ShipNodeSet::iterator itr;
 				if ((itr = OpenSet.find(HashShipNode(DIAGDIR_BEGIN, SPTT_CANAL, successor_tile))) != OpenSet.end()) {
 					node_successor = itr->second;
 					// if g(node_successor) <= successor_current_cost continue (to line 20)

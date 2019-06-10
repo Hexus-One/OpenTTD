@@ -16,10 +16,15 @@
 #include "tile_map.h"
 #include "station_type.h"
 
-typedef uint16 PlannerCost;
+#include <unordered_set>
+
+typedef uint16 PathCost;
 
 extern TileIndex ship_planner_start_tile;
 extern TileIndex ship_planner_end_tile;
+
+typedef std::unordered_set<TileIndex> planner_tileindex_set;
+extern planner_tileindex_set PathHighlightSet; // highlight the finished path for the various planner tools
 
 enum ShipPlannerTileType {
 	SPTT_WATER, // includes both ocean and river tiles (TODO: special handling for half ocean tiles)
@@ -31,8 +36,8 @@ enum ShipPlannerTileType {
 typedef struct _ship_node {
 	_ship_node *prev; // pointer to predecessor node
 	TileIndex tile;
-	PlannerCost f_cost; // estimated cost of an optimal path that includes this tile
-	PlannerCost g_cost; // (known) cost from start node to this node
+	PathCost f_cost; // estimated cost of an optimal path that includes this tile
+	PathCost g_cost; // (known) cost from start node to this node
 	DiagDirection dir; // only used for locks and aqueducts - since canals can attach in any direction
 	ShipPlannerTileType type; // one of the above types
 } *ShipNode;
