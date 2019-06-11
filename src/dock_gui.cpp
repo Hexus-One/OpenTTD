@@ -412,6 +412,14 @@ struct BuildDocksToolbarWindow : Window {
 		}
 	}
 
+	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
+	{
+		const uint dx = Delta(TileX(t0), TileX(t1));
+		const uint dy = Delta(TileY(t0), TileY(t1));
+		return 0;
+		// return sqrt(dx ^ 2 + dy ^ 2);
+	}
+
 	void OnRealtimeTick(uint delta_ms) override
 	{
 		// exit if both tiles aren't defined,
@@ -425,6 +433,18 @@ struct BuildDocksToolbarWindow : Window {
 			UpdatePathSet(itr->second);
 			return;
 		}
+
+		// if the goal tile has changed since the last execution, update the heuristic value for all nodes in the queue
+		// TODO: actually check if the goal tile has changed
+		ShipNodeQueue new_queue = ShipNodeQueue();
+		while (!OpenQueue.empty()) {
+			ShipNode temp_node = OpenQueue.top();
+			OpenQueue.pop();
+			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(temp_node->tile, ship_planner_end_tile);
+			new_queue.push(temp_node);
+		}
+		OpenQueue = new_queue;
+
 		// Do the A* thingo
 		// while the OPEN list is not empty
 		// TODO: Add time limit so as not to lag the whole thing
@@ -467,6 +487,7 @@ struct BuildDocksToolbarWindow : Window {
 						continue;
 					}
 					// Move node_successor from the CLOSED list to the OPEN list
+					node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile); // dirty fix
 					OpenQueue.push(node_successor);
 					OpenSet.insert({ itr->first, itr->second });
 					ClosedSet.erase(itr);
@@ -477,14 +498,14 @@ struct BuildDocksToolbarWindow : Window {
 					node_successor->g_cost = successor_current_cost;
 					node_successor->type = SPTT_CANAL;
 					// Set h(node_successor) to be the heuristic distance to node_goal
-					node_successor->f_cost = node_successor->g_cost + DistanceMax(successor_tile, ship_planner_end_tile);
+					node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
 					// Add it to OpenQueue
 					OpenQueue.push(node_successor);
 					OpenSet.insert({ HashShipNode(node_successor), node_successor });
 				}
 				// Set g(node_successor) = successor_current_cost
 				node_successor->g_cost = successor_current_cost;
-				node_successor->f_cost = node_successor->g_cost + DistanceMax(successor_tile, ship_planner_end_tile);
+				node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
 				// Set the parent of node_successor to node_current
 				node_successor->prev = node_current;
 			}

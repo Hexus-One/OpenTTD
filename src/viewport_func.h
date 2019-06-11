@@ -18,7 +18,7 @@
 
 #include <unordered_set>
 
-typedef uint16 PathCost;
+typedef float PathCost;
 
 extern TileIndex ship_planner_start_tile;
 extern TileIndex ship_planner_end_tile;
