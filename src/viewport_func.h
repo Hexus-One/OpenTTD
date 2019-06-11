@@ -27,15 +27,19 @@ typedef std::unordered_set<TileIndex> planner_tileindex_set;
 extern planner_tileindex_set PathHighlightSet; // highlight the finished path for the various planner tools
 
 enum ShipPlannerTileType {
-	SPTT_WATER, // includes both ocean and river tiles (TODO: special handling for half ocean tiles)
+	SPTT_BEGIN = 0,
+	SPTT_WATER = 0, // includes both ocean and river tiles (TODO: special handling for half ocean tiles)
 	SPTT_CANAL,
 	SPTT_LOCK,
-	SPTT_AQUEDUCT
+	SPTT_AQUEDUCT,
+	SPTT_END
 };
 
+DECLARE_POSTFIX_INCREMENT(ShipPlannerTileType)
+
 typedef struct _ship_node {
-	_ship_node *prev; // pointer to predecessor node
 	TileIndex tile;
+	_ship_node *prev; // pointer to predecessor node
 	PathCost f_cost; // estimated cost of an optimal path that includes this tile
 	PathCost g_cost; // (known) cost from start node to this node
 	DiagDirection dir; // only used for locks and aqueducts - since canals can attach in any direction
@@ -50,7 +54,6 @@ inline ShipNode newShipNode(TileIndex tile = INVALID_TILE)
 	new_node->f_cost = 0;
 	new_node->g_cost = 0;
 	new_node->dir = DIAGDIR_BEGIN;
-	new_node->type = SPTT_WATER;
 	return new_node;
 }
 
