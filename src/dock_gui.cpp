@@ -519,7 +519,7 @@ struct BuildDocksToolbarWindow : Window {
 							DiagDirection slope_dir;
 							if (!(ShipPlannerValidCanalTile(neighbour_facing_tile) && // check pre tile
 								IsValidTile(successor_tile) && // check actual lock tile is valid
-								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsWaterTile(successor_tile)) && // check ownership
+								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // check ownership
 								IsValidDiagDirection(slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile))) && // check slope of tile
 								DiagDirToAxis(dir) == DiagDirToAxis(slope_dir) &&
 								ShipPlannerValidCanalTile(post_tile))) continue; // check post tile
