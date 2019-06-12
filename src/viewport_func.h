@@ -42,7 +42,7 @@ typedef struct _ship_node {
 	_ship_node *prev; // pointer to predecessor node
 	PathCost f_cost; // estimated cost of an optimal path that includes this tile
 	PathCost g_cost; // (known) cost from start node to this node
-	DiagDirection dir; // only used for locks and aqueducts - since canals can attach in any direction
+	Axis axis;
 	ShipPlannerTileType type; // one of the above types
 } *ShipNode;
 
@@ -53,7 +53,6 @@ inline ShipNode newShipNode(TileIndex tile = INVALID_TILE)
 	new_node->tile = tile;
 	new_node->f_cost = 0;
 	new_node->g_cost = 0;
-	new_node->dir = DIAGDIR_BEGIN;
 	return new_node;
 }
 
