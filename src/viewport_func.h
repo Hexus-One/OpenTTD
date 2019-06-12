@@ -18,7 +18,7 @@
 
 #include <unordered_set>
 
-typedef float PathCost;
+typedef uint16 PathCost;
 
 extern TileIndex ship_planner_start_tile;
 extern TileIndex ship_planner_end_tile;
@@ -28,8 +28,7 @@ extern planner_tileindex_set PathHighlightSet; // highlight the finished path fo
 
 enum ShipPlannerTileType {
 	SPTT_BEGIN = 0,
-	SPTT_WATER = 0, // includes both ocean and river tiles (TODO: special handling for half ocean tiles)
-	SPTT_CANAL,
+	SPTT_WATER = 0, // includes canal, ocean and river tiles (TODO: special handling for half ocean tiles)
 	SPTT_LOCK,
 	SPTT_AQUEDUCT,
 	SPTT_END
@@ -39,11 +38,11 @@ DECLARE_POSTFIX_INCREMENT(ShipPlannerTileType)
 
 typedef struct _ship_node {
 	TileIndex tile;
-	_ship_node *prev; // pointer to predecessor node
+	ShipPlannerTileType type; // one of the above types
+	Axis axis;
 	PathCost f_cost; // estimated cost of an optimal path that includes this tile
 	PathCost g_cost; // (known) cost from start node to this node
-	Axis axis;
-	ShipPlannerTileType type; // one of the above types
+	_ship_node *prev; // pointer to predecessor node
 } *ShipNode;
 
 inline ShipNode newShipNode(TileIndex tile = INVALID_TILE)

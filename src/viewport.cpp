@@ -1097,7 +1097,7 @@ static void DrawTileSelection(const TileInfo *ti)
 
 	// ship planner: draw the tile highlights for the finished path
 	if (_thd.drawstyle == HT_START_END && PathHighlightSet.find(ti->tile) != PathHighlightSet.end()) {
-		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+		DrawTileSelectionRect(ti, PAL_NONE);
 	}
 
 	/* Inside the inner area? */

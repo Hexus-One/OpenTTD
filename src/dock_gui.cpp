@@ -74,7 +74,7 @@ TileIndex ship_planner_end_tile;
 // check whether a canal can be built on this tile
 bool ShipPlannerValidCanalTile(const TileIndex& tile)
 {
-	return IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile)) || IsBuoyTile(tile);
+	return IsValidTile(tile) && IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) || IsBuoyTile(tile));
 }
 
 static void ShowBuildDockStationPicker(Window *parent);
@@ -136,7 +136,6 @@ static TileIndex GetOtherAqueductEnd(TileIndex tile_from, TileIndex *tile_to = n
 /** Toolbar window for constructing water infrastructure. */
 struct BuildDocksToolbarWindow : Window {
 	DockToolbarWidgets last_clicked_widget; ///< Contains the last widget that has been clicked on this toolbar.
-	ShipPlannerTileType end_tile_type;
 
 	BuildDocksToolbarWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
 	{
@@ -298,7 +297,7 @@ struct BuildDocksToolbarWindow : Window {
 					ship_planner_start_tile = tile;
 					// create the first node :O
 					ShipNode first_node = newShipNode(tile);
-					first_node->type = IsWaterTile(tile) || IsBuoyTile(tile) ? SPTT_WATER : SPTT_CANAL;
+					first_node->type = SPTT_WATER;
 					// Put node_start in the OPEN list with f(node_start) = h(node_start) (initialization)
 					OpenQueue.push(first_node);
 					OpenSet.insert({ HashShipNode(first_node), first_node });
@@ -320,7 +319,6 @@ struct BuildDocksToolbarWindow : Window {
 				int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 				int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
 				ship_planner_end_tile = TileXY(gx, gy);
-				end_tile_type = IsWaterTile(ship_planner_end_tile) || IsBuoyTile(ship_planner_end_tile) ? SPTT_WATER : SPTT_CANAL;
 				if (!ShipPlannerValidCanalTile(ship_planner_end_tile)) {
 					ship_planner_end_tile = INVALID_TILE;
 				}
@@ -351,10 +349,11 @@ struct BuildDocksToolbarWindow : Window {
 					} else {
 						// build the path if it exists
 						ShipNodeSet::iterator itr;
-						if ((itr = ClosedSet.find(HashShipNode(SPTT_CANAL, ship_planner_end_tile))) != ClosedSet.end()) {
+						if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile))) != ClosedSet.end()) {
 							for (ShipNode temp = itr->second; temp != NULL; temp = temp->prev) {
 								switch (temp->type) {
-								case SPTT_CANAL:
+								case SPTT_WATER:
+									// TODO: don't build if on water tile
 									DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
 									break;
 								case SPTT_LOCK:
@@ -370,7 +369,7 @@ struct BuildDocksToolbarWindow : Window {
 					OpenQueue = ShipNodeQueue();
 					OpenSet = ShipNodeSet();
 					ClosedSet = ShipNodeSet();
-
+					// TODO: delete the actual nodes too
 					ship_planner_start_tile = INVALID_TILE;
 					ship_planner_end_tile = INVALID_TILE;
 					break;
@@ -439,7 +438,7 @@ struct BuildDocksToolbarWindow : Window {
 		}
 		// or the goal has already been found
 		ShipNodeSet::iterator itr;
-		if ((itr = ClosedSet.find(HashShipNode(end_tile_type, ship_planner_end_tile))) != ClosedSet.end()) {
+		if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile))) != ClosedSet.end()) {
 			UpdatePathSet(itr->second);
 			return;
 		}
@@ -458,6 +457,7 @@ struct BuildDocksToolbarWindow : Window {
 		// Do the A* thingo
 		// while the OPEN list is not empty
 		// TODO: Add time limit so as not to lag the whole thing
+		uint16 steps = 0;
 		while (!OpenQueue.empty()) {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
@@ -465,121 +465,115 @@ struct BuildDocksToolbarWindow : Window {
 			OpenQueue.pop();
 			OpenSet.erase(HashShipNode(node_current));
 			// if node_current is node_goal we have found the solution; break
-			if (node_current->tile == ship_planner_end_tile && node_current->type == end_tile_type) {
+			if (node_current->tile == ship_planner_end_tile && node_current->type == SPTT_WATER) {
 				ClosedSet.insert({ HashShipNode(node_current), node_current });
 				UpdatePathSet(node_current);
-				// break;
+				// don't break - instead keep searching
 			}
 			// Generate each state node_successor that come after node_current
 			// For each direction, try each tile type
 			for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-				// for locks and aqueducts, check that this direction matches the node
-				ShipPlannerTileType successor_tiletype;
+
+				// offset the "facing" tile for the current node - in the case that it's a LOCK or AQUEDUCT
+				TileIndex neighbour_facing_tile;
+				switch (node_current->type) {
+					case (SPTT_WATER):
+						// the facing tile is just the 4 tiles adjacent to the canal tile
+						neighbour_facing_tile = TileAddByDiagDir(node_current->tile, dir);
+						// check it's valid
+						if (!IsValidTile(neighbour_facing_tile)) continue;
+						break;
+
+					case (SPTT_LOCK):
+						// for locks and aqueducts, check that this direction matches the node
+						if (node_current->axis != DiagDirToAxis(dir)) continue;
+						// the facing tile is at the end of the lock, i.e. two tiles from its centre
+						neighbour_facing_tile = TileAddByDiagDir(TileAddByDiagDir(node_current->tile, dir), dir);
+						// don't have to check the intermediate tile {TileAddByDiagDir(node_current->tile, dir)} because the lock already occupies it
+						if (!IsValidTile(neighbour_facing_tile)) continue;
+						break;
+
+					default:
+						NOT_REACHED();
+				}
+
 				TileIndex successor_tile;
 				PathCost successor_current_cost;
-				DiagDirection successor_dir;
-				TileIndex current_neighbour_tile;
-				if (node_current->type == SPTT_LOCK) {
-					if (node_current->axis == DiagDirToAxis(dir)) {
-						// offset the "adjacent" tile to the correct position
-						current_neighbour_tile = TileAddByDiagDir(node_current->tile, dir);
-					} else {
-						continue;
-					}
-				}
-				for (successor_tiletype = SPTT_BEGIN; successor_tiletype < SPTT_END; successor_tiletype++) {
+				for (ShipPlannerTileType successor_tiletype = SPTT_BEGIN; successor_tiletype < SPTT_END; successor_tiletype++) {
 					switch (successor_tiletype) {
+						// deal with canals/plain water (including buoys)
 						case SPTT_WATER:
-						case SPTT_CANAL:
-							// deal with canals/plain water (including buoys)
 							// check it is valid for placement
-							successor_tile = TileAddByDiagDir(current_neighbour_tile, dir);
-							if (!ShipPlannerValidCanalTile(successor_tile) || (successor_tile == SPTT_CANAL) == (IsWaterTile(successor_tile) || IsBuoyTile(successor_tile))) {
-								continue;
-							}
+							successor_tile = neighbour_facing_tile;
+							// this check is different to IsValidTile()
+							if (!ShipPlannerValidCanalTile(successor_tile)) continue;
 							successor_current_cost = node_current->g_cost + 1; // magic number oops
 							break;
 
+						// deal with locks for vertical movement :)
 						case SPTT_LOCK: {
-							// deal with locks for vertical movement :)
-							// locks need 3 tiles: [0]pre(flat), [1]slope and [2]post(flat)
-							TileIndex tile_line[3];
-							tile_line[0] = TileAddByDiagDir(current_neighbour_tile, dir);
-							tile_line[1] = TileAddByDiagDir(tile_line[0], dir);
-							tile_line[2] = TileAddByDiagDir(tile_line[1], dir);
-							bool valid_tiles = true;
-							for (uint8 i = 0; i < 3; i++) {
-								if (!IsTileType(tile_line[i], MP_CLEAR) ||
-									 IsTileType(tile_line[i], MP_TREES) ||
-									IsWaterTile(tile_line[i]) ||
-									 IsBuoyTile(tile_line[i])) {
-									valid_tiles = false;
-									break;
-								}
-							}
+							successor_tile = TileAddByDiagDir(neighbour_facing_tile, dir);
+							TileIndex post_tile = TileAddByDiagDir(successor_tile, dir);
 							// check the tile types/slopes are valid
-							successor_dir = GetInclinedSlopeDirection(GetTileSlope(tile_line[1]));
-							if (!(valid_tiles &&
-								IsTileFlat(tile_line[0]) &&
-								IsValidDiagDirection(successor_dir) &&
-								(DiagDirToAxis(successor_dir) == DiagDirToAxis(dir)) &&
-								IsTileFlat(tile_line[2]))) {
-								continue;
-							}
-							successor_tile = tile_line[1];
+							// otherwise skip to the next successor_tiletype
+							DiagDirection slope_dir;
+							if (!(ShipPlannerValidCanalTile(neighbour_facing_tile) && // check pre tile
+								IsValidTile(successor_tile) && // check actual lock tile is valid
+								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsWaterTile(successor_tile)) && // check ownership
+								IsValidDiagDirection(slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile))) && // check slope of tile
+								DiagDirToAxis(dir) == DiagDirToAxis(slope_dir) &&
+								ShipPlannerValidCanalTile(post_tile))) continue; // check post tile
+
 							successor_current_cost = node_current->g_cost + 10;
 							break;
 						}
 
-						case SPTT_AQUEDUCT:
-							break;
-
 						default:
-							break;
+							continue;
 					}
 					// Set successor_current_cost = g(node_current) + w(node_current, node_successor)
-				}
 
-				// if node_successor is in the OPEN list
-				ShipNode node_successor;
-				if ((itr = OpenSet.find(HashShipNode(successor_tiletype, successor_tile))) != OpenSet.end()) {
-					node_successor = itr->second;
-					// if g(node_successor) <= successor_current_cost continue (to line 20)
-					if (node_successor->g_cost <= successor_current_cost) {
-						continue;
+					ShipNode node_successor;
+					// if node_successor is in the OPEN list
+					if ((itr = OpenSet.find(HashShipNode(successor_tiletype, successor_tile))) != OpenSet.end()) {
+						node_successor = itr->second;
+						// if g(node_successor) <= successor_current_cost continue (to line 20)
+						if (node_successor->g_cost <= successor_current_cost) {
+							continue;
+						}
+						node_successor->g_cost = successor_current_cost;
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+					// else if node_successor is in the CLOSED list
+					} else if ((itr = ClosedSet.find(HashShipNode(successor_tiletype, successor_tile))) != ClosedSet.end()) {
+						node_successor = itr->second;
+						// if g(node_successor) <= successor_current_cost continue (to line 20)
+						if (node_successor->g_cost <= successor_current_cost) {
+							continue;
+						}
+						// Move node_successor from the CLOSED list to the OPEN list
+						node_successor->g_cost = successor_current_cost;
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						OpenQueue.push(node_successor);
+						OpenSet.insert({ itr->first, itr->second });
+						ClosedSet.erase(itr);
+					} else {
+						// Add node_successor to the OPEN list
+						// Which means it has to be created
+						node_successor = newShipNode(successor_tile);
+						node_successor->type = successor_tiletype;
+						if (successor_tiletype == SPTT_LOCK) {
+							node_successor->axis = DiagDirToAxis(dir);
+						}
+						node_successor->g_cost = successor_current_cost;
+						// Set h(node_successor) to be the heuristic distance to node_goal
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						// Add it to OpenQueue
+						OpenQueue.push(node_successor);
+						OpenSet.insert({ HashShipNode(node_successor), node_successor });
 					}
-					node_successor->g_cost = successor_current_cost;
-					node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
-				// else if node_successor is in the CLOSED list
-				} else if ((itr = ClosedSet.find(HashShipNode(successor_tiletype, successor_tile))) != ClosedSet.end()) {
-					node_successor = itr->second;
-					// if g(node_successor) <= successor_current_cost continue (to line 20)
-					if (node_successor->g_cost <= successor_current_cost) {
-						continue;
-					}
-					// Move node_successor from the CLOSED list to the OPEN list
-					node_successor->g_cost = successor_current_cost;
-					node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile); // dirty fix
-					OpenQueue.push(node_successor);
-					OpenSet.insert({ itr->first, itr->second });
-					ClosedSet.erase(itr);
-				} else {
-					// Add node_successor to the OPEN list
-					// Which means it has to be created
-					node_successor = newShipNode(successor_tile);
-					node_successor->type = successor_tiletype;
-					if (successor_tiletype == SPTT_LOCK) {
-						node_successor->axis = DiagDirToAxis(successor_dir);
-					}
-					node_successor->g_cost = successor_current_cost;
-					// Set h(node_successor) to be the heuristic distance to node_goal
-					node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
-					// Add it to OpenQueue
-					OpenQueue.push(node_successor);
-					OpenSet.insert({ HashShipNode(node_successor), node_successor });
+					// Set the parent of node_successor to node_current
+					node_successor->prev = node_current;
 				}
-				// Set the parent of node_successor to node_current
-				node_successor->prev = node_current;
 			}
 			// Add node_current to the CLOSED list
 			ClosedSet.insert({ HashShipNode(node_current), node_current });
