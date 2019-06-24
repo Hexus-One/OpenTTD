@@ -39,17 +39,18 @@ DECLARE_POSTFIX_INCREMENT(ShipPlannerTileType)
 typedef struct _ship_node {
 	TileIndex tile;
 	ShipPlannerTileType type; // one of the above types
-	Axis axis;
+	DiagDirection dir;
 	PathCost f_cost; // estimated cost of an optimal path that includes this tile
 	PathCost g_cost; // (known) cost from start node to this node
 	_ship_node *prev; // pointer to predecessor node
 } *ShipNode;
 
-inline ShipNode newShipNode(TileIndex tile = INVALID_TILE)
+inline ShipNode newShipNode(TileIndex tile = INVALID_TILE, DiagDirection dir = INVALID_DIAGDIR)
 {
 	ShipNode new_node = new _ship_node();
 	new_node->prev = NULL;
 	new_node->tile = tile;
+	new_node->dir = dir;
 	new_node->f_cost = 0;
 	new_node->g_cost = 0;
 	return new_node;
