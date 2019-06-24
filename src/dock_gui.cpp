@@ -476,7 +476,7 @@ struct BuildDocksToolbarWindow : Window {
 		// while the OPEN list is not empty
 		// TODO: Add time limit so as not to lag the whole thing
 		uint16 steps = 0;
-		while (!OpenQueue.empty()) {
+		while (!OpenQueue.empty() && steps++ < 16384) {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
 			ShipNode node_current = OpenQueue.top();
