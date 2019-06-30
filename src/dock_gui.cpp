@@ -351,32 +351,38 @@ struct BuildDocksToolbarWindow : Window {
 					if (TileXY(gx, gy) == ship_planner_start_tile) {
 						DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
 					} else {
-						// build the path if it exists
+						// check all four directions, find the cheapest node
 						ShipNodeSet::iterator itr;
-						// check all four directions
+						PathCost cheapest = UINT16_MAX;
+						ShipNode best_node = nullptr;
 						for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-							if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end()) {
-								for (ShipNode temp = itr->second; temp != NULL; temp = temp->prev) {
-									switch (temp->type) {
-										case SPTT_WATER:
-											// don't build if on water tile
-											if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
-												DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-											}
-											break;
+							if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
+								itr->second->g_cost < cheapest) {
+								best_node = itr->second;
+								cheapest = best_node->g_cost;
+							}
+						}
+						// build the path if it exists
+						if (best_node != nullptr) {
+							for (ShipNode temp = best_node; temp != nullptr; temp = temp->prev) {
+								switch (temp->type) {
+									case SPTT_WATER:
+										// don't build if on water tile
+										if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
+											DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+										}
+										break;
 
-										case SPTT_LOCK:
-											// don't build if there's already a lock here
-											if (!(IsTileType(temp->tile, MP_WATER) && IsLock(temp->tile) && GetLockPart(temp->tile) == LOCK_PART_MIDDLE)) {
-												DoCommandP(temp->tile, 0, 0, CMD_BUILD_LOCK | CMD_MSG(STR_ERROR_CAN_T_BUILD_LOCKS), CcBuildDocks);
-											}
-											break;
+									case SPTT_LOCK:
+										// don't build if there's already a lock here
+										if (!(IsTileType(temp->tile, MP_WATER) && IsLock(temp->tile) && GetLockPart(temp->tile) == LOCK_PART_MIDDLE)) {
+											DoCommandP(temp->tile, 0, 0, CMD_BUILD_LOCK | CMD_MSG(STR_ERROR_CAN_T_BUILD_LOCKS), CcBuildDocks);
+										}
+										break;
 
-										default:
-											break;
-									}
+									default:
+										break;
 								}
-								break; // break out of this loop, checking other directions not necessary
 							}
 						}
 					}
@@ -430,10 +436,10 @@ struct BuildDocksToolbarWindow : Window {
 	// todo: change to unordered map (associate tile highlight with each tile)
 	// also only change if the set actually changes
 	// also: implement markDirty for the tiles
-	void UpdatePathSet(ShipNode end = NULL)
+	void UpdatePathSet(ShipNode end = nullptr)
 	{
 		PathHighlightSet = planner_tileindex_set();
-		while (end != NULL) {
+		while (end != nullptr) {
 			PathHighlightSet.insert(end->tile);
 			end = end->prev;
 		}
@@ -454,12 +460,16 @@ struct BuildDocksToolbarWindow : Window {
 		// or the goal has already been found
 		// (we have to check all four directions I guess)
 		ShipNodeSet::iterator itr;
+		PathCost cheapest = UINT16_MAX;
+		ShipNode best_node = nullptr;
 		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-			if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end()) {
-				UpdatePathSet(itr->second);
-				return;
+			if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
+				itr->second->g_cost < cheapest) {
+				best_node = itr->second;
+				cheapest = best_node->g_cost;
 			}
 		}
+		UpdatePathSet(best_node);
 
 		// if the goal tile has changed since the last execution, update the heuristic value for all nodes in the queue
 		// TODO: actually check if the goal tile has changed
@@ -513,7 +523,7 @@ struct BuildDocksToolbarWindow : Window {
 			// try each tile type for the new neighbour
 			for (ShipPlannerTileType successor_tiletype = SPTT_BEGIN; successor_tiletype < SPTT_END; successor_tiletype++) {
 				TileIndex successor_tile;
-				PathCost successor_current_cost;
+				PathCost tentative_cost;
 				switch (successor_tiletype) {
 					// deal with canals/plain water (including buoys)
 					case SPTT_WATER:
@@ -521,7 +531,7 @@ struct BuildDocksToolbarWindow : Window {
 						successor_tile = neighbour_facing_tile;
 						// this check is different to IsValidTile()
 						if (!ShipPlannerValidCanalTile(successor_tile)) continue;
-						successor_current_cost = node_current->g_cost + 1; // magic number oops
+						tentative_cost = node_current->g_cost + 2; // magic number oops
 						break;
 
 					// deal with locks for vertical movement :)
@@ -542,7 +552,7 @@ struct BuildDocksToolbarWindow : Window {
 							ShipPlannerValidCanalTile(post_tile)))) continue; // check post tile
 							// otherwise skip to the next successor_tiletype
 
-						successor_current_cost = node_current->g_cost + 10;
+						tentative_cost = node_current->g_cost + 20;
 						break;
 					}
 
@@ -556,6 +566,12 @@ struct BuildDocksToolbarWindow : Window {
 					if (dir == ReverseDiagDir(node_current->dir) || successor_tiletype != SPTT_WATER && dir != node_current->dir) {
 						continue;
 					}
+					PathCost successor_current_cost = tentative_cost;
+
+					// ships go faster on diagonals, i.e. "turning" is faster
+					if (dir != node_current->dir) {
+						successor_current_cost--;
+					}
 
 					ShipNode node_successor;
 					// if node_successor is in the OPEN list
@@ -567,6 +583,8 @@ struct BuildDocksToolbarWindow : Window {
 						}
 						node_successor->g_cost = successor_current_cost;
 						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						// we also have to move the node further to the front, uh hm
+						OpenQueue.push(node_successor); // lazy insert, hopefully this works?
 					// else if node_successor is in the CLOSED list
 					} else if ((itr = ClosedSet.find(HashShipNode(successor_tiletype, successor_tile, dir))) != ClosedSet.end()) {
 						node_successor = itr->second;
