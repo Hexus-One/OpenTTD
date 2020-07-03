@@ -333,13 +333,26 @@ struct BuildDocksToolbarWindow : Window {
 						}
 					}
 					// build the path if it exists
+					// TODO: reduce DoCommandP count by finding all tiles in a straight line
 					if (best_node != nullptr) {
+						TileIndex start_drag = INVALID_TILE;
 						for (ShipNode temp = best_node; temp != nullptr; temp = temp->prev) {
 							switch (temp->type) {
 								case SPTT_WATER:
 									// don't build if on water tile
 									if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
-										DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+										if (start_drag == INVALID_TILE) {
+											start_drag = temp->tile;
+										}
+										// don't send command now if the next tile is still in a straight line from here
+										if (temp->prev != nullptr && temp->prev->type == SPTT_WATER &&
+											!(IsWaterTile(temp->prev->tile) || IsBuoyTile(temp->prev->tile)) &&
+											DiagdirBetweenTiles(start_drag, temp->prev->tile) != INVALID_DIAGDIR) {
+
+										} else {
+											DoCommandP(start_drag, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+											start_drag = INVALID_TILE;
+										}
 									}
 									break;
 
@@ -417,7 +430,8 @@ struct BuildDocksToolbarWindow : Window {
 	// heuristic function for A* path search
 	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
 	{
-		return DistanceMax(t0, t1);
+		return 0;
+		// return DistanceMax(t0, t1);
 	}
 
 	void OnRealtimeTick(uint delta_ms) override
@@ -449,6 +463,7 @@ struct BuildDocksToolbarWindow : Window {
 		while (!OpenQueue.empty()) {
 			ShipNode temp_node = OpenQueue.top();
 			OpenQueue.pop();
+			// changed to BFS by excluding heuristic, only taking g_cost
 			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(temp_node->tile, ship_planner_end_tile);
 			new_queue.push(temp_node);
 		}
