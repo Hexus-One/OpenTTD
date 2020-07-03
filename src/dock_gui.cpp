@@ -345,11 +345,9 @@ struct BuildDocksToolbarWindow : Window {
 											start_drag = temp->tile;
 										}
 										// don't send command now if the next tile is still in a straight line from here
-										if (temp->prev != nullptr && temp->prev->type == SPTT_WATER &&
-											!(IsWaterTile(temp->prev->tile) || IsBuoyTile(temp->prev->tile)) &&
-											DiagdirBetweenTiles(start_drag, temp->prev->tile) != INVALID_DIAGDIR) {
-
-										} else {
+										if (temp->prev == nullptr || temp->prev->type != SPTT_WATER ||
+											IsWaterTile(temp->prev->tile) || IsBuoyTile(temp->prev->tile) ||
+											DiagdirBetweenTiles(start_drag, temp->prev->tile) == INVALID_DIAGDIR) {
 											DoCommandP(start_drag, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
 											start_drag = INVALID_TILE;
 										}
