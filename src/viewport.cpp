@@ -88,6 +88,7 @@
 #include "command_func.h"
 #include "network/network_func.h"
 #include "framerate_type.h"
+#include "planner.h"
 
 #include <map>
 

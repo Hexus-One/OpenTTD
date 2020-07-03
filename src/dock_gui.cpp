@@ -26,6 +26,7 @@
 #include "gui.h"
 #include "zoom_func.h"
 #include "station_map.h"
+#include "planner.h"
 
 #include "widgets/dock_widget.h"
 
@@ -34,48 +35,13 @@
 
 #include "safeguards.h"
 
-#include <queue>
-#include <unordered_map>
-
-struct CompareShipNodes {
-	bool operator ()(const ShipNode& a, const ShipNode& b)
-	{
-		if (a->f_cost == b->f_cost) {
-			return a->tile > b->tile;
-		} else {
-			return a->f_cost > b->f_cost;
-		}
-	}
-};
-
-typedef std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> ShipNodeQueue;
-typedef std::unordered_map<uint64, ShipNode> ShipNodeSet;
-
 planner_tileindex_set PathHighlightSet;
+TileIndex ship_planner_start_tile;
+TileIndex ship_planner_end_tile;
 
 ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
 ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
 ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
-
-// create a key from a node, for use in ClosedSet
-uint64 HashShipNode(const ShipPlannerTileType& type, const TileIndex& tile, const DiagDirection& dir)
-{
-	return ((uint64)((type << 8) | dir) << 32) | tile;
-}
-
-uint64 HashShipNode(const ShipNode& node)
-{
-	return HashShipNode(node->type, node->tile, node->dir);
-}
-
-TileIndex ship_planner_start_tile;
-TileIndex ship_planner_end_tile;
-
-// check whether a canal can be built on this tile
-bool ShipPlannerValidCanalTile(const TileIndex& tile)
-{
-	return IsValidTile(tile) && IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) || IsBuoyTile(tile));
-}
 
 static void ShowBuildDockStationPicker(Window *parent);
 static void ShowBuildDocksDepotPicker(Window *parent);
@@ -176,11 +142,12 @@ struct BuildDocksToolbarWindow : Window {
 		}
 	}
 
+	// special overload case specifically for canal planner
 	virtual void DrawWidget(const Rect &r, int widget) const
 	{
 		if (widget == WID_DT_SHIP_PLANNER) {
 			// a bit of funky maths to shrink the cargo-flow icon
-			ZoomLevel temp_zoom;
+			ZoomLevel temp_zoom = ZOOM_LVL_BEGIN;
 			switch (_gui_zoom) {
 			case ZOOM_LVL_NORMAL:
 				temp_zoom = ZOOM_LVL_OUT_2X;
@@ -326,6 +293,8 @@ struct BuildDocksToolbarWindow : Window {
 				if (!ShipPlannerValidCanalTile(ship_planner_end_tile)) {
 					ship_planner_end_tile = INVALID_TILE;
 				}
+			} else {
+				ship_planner_end_tile = INVALID_TILE;
 			}
 		}
 	}
@@ -345,44 +314,44 @@ struct BuildDocksToolbarWindow : Window {
 					break;
 				case DDSP_SHIP_PLANNER: {
 					// sometimes the drag function doesn't execute between mouseDown and Up - usually only when the user clicks too quickly.
-					// if they click too quickly, we assume they just clicked on a single tile, so behave just like the regular canal tool
 					int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 					int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
+					// if they click too quickly, we assume they just clicked on a single tile, so behave just like the regular canal tool
 					if (TileXY(gx, gy) == ship_planner_start_tile) {
 						DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-					} else {
-						// check all four directions, find the cheapest node
-						ShipNodeSet::iterator itr;
-						PathCost cheapest = UINT16_MAX;
-						ShipNode best_node = nullptr;
-						for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-							if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
-								itr->second->g_cost < cheapest) {
-								best_node = itr->second;
-								cheapest = best_node->g_cost;
-							}
+						break;
+					}
+					// check all four directions, find the cheapest node
+					ShipNodeSet::iterator itr;
+					PathCost cheapest = PATHCOST_MAX;
+					ShipNode best_node = nullptr;
+					for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+						if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
+							itr->second->g_cost < cheapest) {
+							best_node = itr->second;
+							cheapest = best_node->g_cost;
 						}
-						// build the path if it exists
-						if (best_node != nullptr) {
-							for (ShipNode temp = best_node; temp != nullptr; temp = temp->prev) {
-								switch (temp->type) {
-									case SPTT_WATER:
-										// don't build if on water tile
-										if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
-											DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-										}
-										break;
+					}
+					// build the path if it exists
+					if (best_node != nullptr) {
+						for (ShipNode temp = best_node; temp != nullptr; temp = temp->prev) {
+							switch (temp->type) {
+								case SPTT_WATER:
+									// don't build if on water tile
+									if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
+										DoCommandP(temp->tile, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+									}
+									break;
 
-									case SPTT_LOCK:
-										// don't build if there's already a lock here
-										if (!(IsTileType(temp->tile, MP_WATER) && IsLock(temp->tile) && GetLockPart(temp->tile) == LOCK_PART_MIDDLE)) {
-											DoCommandP(temp->tile, 0, 0, CMD_BUILD_LOCK | CMD_MSG(STR_ERROR_CAN_T_BUILD_LOCKS), CcBuildDocks);
-										}
-										break;
+								case SPTT_LOCK:
+									// don't build if there's already a lock here
+									if (!(IsTileType(temp->tile, MP_WATER) && IsLock(temp->tile) && GetLockPart(temp->tile) == LOCK_PART_MIDDLE)) {
+										DoCommandP(temp->tile, 0, 0, CMD_BUILD_LOCK | CMD_MSG(STR_ERROR_CAN_T_BUILD_LOCKS), CcBuildDocks);
+									}
+									break;
 
-									default:
-										break;
-								}
+								default:
+									break;
 							}
 						}
 					}
@@ -445,6 +414,7 @@ struct BuildDocksToolbarWindow : Window {
 		}
 	}
 
+	// heuristic function for A* path search
 	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
 	{
 		return DistanceMax(t0, t1);
@@ -452,7 +422,7 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// exit if both tiles aren't defined,
+		// exit if either tiles aren't defined,
 		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE) {
 			UpdatePathSet();
 			return;
@@ -460,7 +430,7 @@ struct BuildDocksToolbarWindow : Window {
 		// or the goal has already been found
 		// (we have to check all four directions I guess)
 		ShipNodeSet::iterator itr;
-		PathCost cheapest = UINT16_MAX;
+		PathCost cheapest = PATHCOST_MAX;
 		ShipNode best_node = nullptr;
 		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
 			if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
@@ -470,7 +440,9 @@ struct BuildDocksToolbarWindow : Window {
 			}
 		}
 		UpdatePathSet(best_node);
-
+		if (cheapest != PATHCOST_MAX) {
+			return;
+		}
 		// if the goal tile has changed since the last execution, update the heuristic value for all nodes in the queue
 		// TODO: actually check if the goal tile has changed
 		ShipNodeQueue new_queue = ShipNodeQueue();
@@ -537,6 +509,7 @@ struct BuildDocksToolbarWindow : Window {
 					// deal with locks for vertical movement :)
 					case SPTT_LOCK: {
 						successor_tile = TileAddByDiagDir(neighbour_facing_tile, node_current->dir);
+						if (!IsValidTile(successor_tile)) continue;
 						TileIndex post_tile = TileAddByDiagDir(successor_tile, node_current->dir);
 						DiagDirection slope_dir;
 						// check if a lock already exists here
@@ -552,6 +525,7 @@ struct BuildDocksToolbarWindow : Window {
 							ShipPlannerValidCanalTile(post_tile)))) continue; // check post tile
 							// otherwise skip to the next successor_tiletype
 
+						// hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock
 						tentative_cost = node_current->g_cost + 20;
 						break;
 					}
