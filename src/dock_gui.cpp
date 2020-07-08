@@ -431,8 +431,7 @@ struct BuildDocksToolbarWindow : Window {
 	// heuristic function for A* path search
 	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
 	{
-		return 0;
-		// return DistanceMax(t0, t1);
+		return DistanceMax(t0, t1);
 	}
 
 	void OnRealtimeTick(uint delta_ms) override
@@ -464,7 +463,6 @@ struct BuildDocksToolbarWindow : Window {
 		while (!OpenQueue.empty()) {
 			ShipNode temp_node = OpenQueue.top();
 			OpenQueue.pop();
-			// changed to BFS by excluding heuristic, only taking g_cost
 			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(temp_node->tile, ship_planner_end_tile);
 			new_queue.push(temp_node);
 		}
@@ -486,21 +484,7 @@ struct BuildDocksToolbarWindow : Window {
 			// Generate each state node_successor that come after node_current
 			// since node_current already has a direction, we only choose directions for canal neighbours
 			// offset the "facing" tile for the current node - in the case that it's a LOCK or AQUEDUCT
-			TileIndex neighbour_facing_tile;
-			switch (node_current->type) {
-				case (SPTT_WATER):
-					// the facing tile is just  adjacent to the canal tile
-					neighbour_facing_tile = TileAddByDiagDir(node_current->tile, node_current->dir);
-					break;
-
-				case (SPTT_LOCK):
-					// the facing tile is at the end of the lock, i.e. two tiles from its centre
-					neighbour_facing_tile = TileAddByDiagDir(TileAddByDiagDir(node_current->tile, node_current->dir), node_current->dir);
-					break;
-
-				default:
-					NOT_REACHED();
-			}
+			TileIndex neighbour_facing_tile = GetFacingTile(node_current);
 
 			// check this tile is within the map, otherwise write off node_current and move on
 			if (!IsValidTile(neighbour_facing_tile)) {

@@ -41,8 +41,7 @@ struct CompareShipNodes {
 	{
 		if (a->f_cost == b->f_cost) {
 			return a->tile > b->tile;
-		}
-		else {
+		} else {
 			return a->f_cost > b->f_cost;
 		}
 	}
@@ -82,6 +81,28 @@ inline uint64 HashShipNode(const ShipNode& node)
 inline bool ShipPlannerValidCanalTile(const TileIndex& tile)
 {
 	return IsValidTile(tile) && IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) || IsBuoyTile(tile));
+}
+
+inline TileIndex GetFacingTile(ShipNode node)
+{
+	TileIndex neighbour_facing_tile = INVALID_TILE;
+	switch (node->type) {
+		case (SPTT_WATER):
+			// the facing tile is just  adjacent to the canal tile
+			return TileAddByDiagDir(node->tile, node->dir);
+
+		case (SPTT_LOCK):
+			// the facing tile is at the end of the lock, i.e. two tiles from its centre
+			TileIndex mid = TileAddByDiagDir(node->tile, node->dir);
+			if (!IsValidTile(mid)) {
+				return INVALID_TILE;
+			} else {
+				return TileAddByDiagDir(mid, node->dir);
+			}
+
+		default:
+			NOT_REACHED();
+	}
 }
 
 #endif /* BUILD_PLANNER */
