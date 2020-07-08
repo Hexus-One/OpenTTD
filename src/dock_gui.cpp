@@ -494,25 +494,31 @@ struct BuildDocksToolbarWindow : Window {
 
 						// deal with locks for vertical movement :)
 					case SPTT_LOCK: {
+						/* check pre-lock tile */
+						if (!IsTileFlat(neighbour_facing_tile)) continue;
+
+						/* check slope tile */
 						successor_tile = TileAddByDiagDir(neighbour_facing_tile, node_current->dir);
 						if (!IsValidTile(successor_tile)) continue;
-						TileIndex post_tile = TileAddByDiagDir(successor_tile, node_current->dir);
-						DiagDirection slope_dir;
-						// check if a lock already exists here
-						if (!((IsValidTile(neighbour_facing_tile) && IsValidTile(successor_tile) &&
-							IsTileType(successor_tile, MP_WATER) && IsLock(successor_tile) && GetLockPart(successor_tile) == LOCK_PART_MIDDLE &&
-							DiagDirToAxis(GetLockDirection(successor_tile)) == DiagDirToAxis(node_current->dir)) ||
-							// or if the tile types/slopes are valid for a new lock
-							(ShipPlannerValidCanalTile(neighbour_facing_tile) && // check pre tile
-								IsValidTile(successor_tile) && // check actual lock tile is valid
-								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // check ownership
-								IsValidDiagDirection(slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile))) && // check slope of tile
-								DiagDirToAxis(node_current->dir) == DiagDirToAxis(slope_dir) &&
-								ShipPlannerValidCanalTile(post_tile)))) continue; // check post tile
-								// otherwise skip to the next successor_tiletype
 
-							// hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock
-						tentative_cost = node_current->g_cost + 20;
+						DiagDirection slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile));
+						if (!IsValidDiagDirection(slope_dir) || DiagDirToAxis(node_current->dir) != DiagDirToAxis(slope_dir)) continue;
+
+						/* check post-lock tile */
+						TileIndex post_tile = TileAddByDiagDir(successor_tile, node_current->dir);
+						if (!IsValidTile(post_tile) || !IsTileFlat(post_tile)) continue;
+
+						/* check if a lock already exists here */
+						if (IsTileType(successor_tile, MP_WATER) && IsLock(successor_tile) ||
+							// or if the tile types are valid for a new lock
+							ShipPlannerValidLockTile(neighbour_facing_tile) && // check pre tile
+								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // TODO: check ownership
+								ShipPlannerValidLockTile(post_tile)) { // check post tile
+							/* hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock */
+							tentative_cost = node_current->g_cost + 20;
+						} else {
+							continue;
+						}
 						break;
 					}
 

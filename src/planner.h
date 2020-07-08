@@ -84,6 +84,11 @@ inline bool ShipPlannerValidCanalTile(const TileIndex& tile)
 	return IsValidTile(tile) && IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) || IsBuoyTile(tile));
 }
 
+inline bool ShipPlannerValidLockTile(const TileIndex& tile)
+{
+	return (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || (IsWaterTile(tile) && !IsCanal(tile)));
+}
+
 inline TileIndex GetFacingTile(ShipNode node)
 {
 	TileIndex neighbour_facing_tile = INVALID_TILE;
