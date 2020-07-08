@@ -27,6 +27,7 @@
 #include "zoom_func.h"
 #include "station_map.h"
 #include "planner.h"
+#include "debug.h"
 
 #include "widgets/dock_widget.h"
 
@@ -34,6 +35,7 @@
 #include "table/strings.h"
 
 #include "safeguards.h"
+#include <chrono>
 
 planner_tileindex_set PathHighlightSet;
 TileIndex ship_planner_start_tile;
@@ -455,10 +457,15 @@ struct BuildDocksToolbarWindow : Window {
 
 		// Do the A* thingo
 		// while the OPEN list is not empty
-		// step count is arbitrarily set
-		// TODO: Add time limit so as not to lag the whole thing
+		// time limit is arbitrarily set - only calculate for 25ms per tick
+		using namespace std::chrono;
+		high_resolution_clock::time_point until = high_resolution_clock::now() + (milliseconds) 25;
 		uint16 steps = 0;
-		while (!OpenQueue.empty() && steps++ < 4096) {
+		while (!OpenQueue.empty()) {
+			/* only check clock every 100 nodes */
+			if (steps++ % 100 == 99 && high_resolution_clock::now() > until) {
+				break;
+			}
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
 			ShipNode node_current = OpenQueue.top();
@@ -584,6 +591,7 @@ struct BuildDocksToolbarWindow : Window {
 			// Add node_current to the CLOSED list
 			ClosedSet.insert({ HashShipNode(node_current), node_current });
 		}
+		DEBUG(misc, 4, "%d nodes evaluated during tick.", steps);
 		// if (node_current != node_goal) exit with error(the OPEN list is empty)
 		// in our case, do nothing I guess
 	}
