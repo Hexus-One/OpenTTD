@@ -149,19 +149,19 @@ struct BuildDocksToolbarWindow : Window {
 			// a bit of funky maths to shrink the cargo-flow icon
 			ZoomLevel temp_zoom = ZOOM_LVL_BEGIN;
 			switch (_gui_zoom) {
-			case ZOOM_LVL_NORMAL:
-				temp_zoom = ZOOM_LVL_OUT_2X;
-				break;
-			case ZOOM_LVL_OUT_2X:
-				temp_zoom = ZOOM_LVL_OUT_4X;
-				break;
-			case ZOOM_LVL_OUT_4X:
-				temp_zoom = ZOOM_LVL_OUT_8X;
-				break;
+				case ZOOM_LVL_NORMAL:
+					temp_zoom = ZOOM_LVL_OUT_2X;
+					break;
+				case ZOOM_LVL_OUT_2X:
+					temp_zoom = ZOOM_LVL_OUT_4X;
+					break;
+				case ZOOM_LVL_OUT_4X:
+					temp_zoom = ZOOM_LVL_OUT_8X;
+					break;
 			}
-			Dimension d = GetSpriteSize(SPR_IMG_CARGOFLOW, (Point *)0, temp_zoom);
+			Dimension d = GetSpriteSize(SPR_IMG_CARGOFLOW, (Point*)0, temp_zoom);
 			uint offset = this->IsWidgetLowered(WID_DT_SHIP_PLANNER) ? 1 : 0;
-			DrawSprite(SPR_IMG_CARGOFLOW, PAL_NONE, (r.left + r.right - d.width) / 2 + offset, (r.top + r.bottom - d.height) / 2 + offset, (const SubSprite *)0, temp_zoom);
+			DrawSprite(SPR_IMG_CARGOFLOW, PAL_NONE, (r.left + r.right - d.width) / 2 + offset, (r.top + r.bottom - d.height) / 2 + offset, (const SubSprite*)0, temp_zoom);
 		}
 	}
 
@@ -507,7 +507,7 @@ struct BuildDocksToolbarWindow : Window {
 						tentative_cost = node_current->g_cost + 2; // magic number oops
 						break;
 
-					// deal with locks for vertical movement :)
+						// deal with locks for vertical movement :)
 					case SPTT_LOCK: {
 						successor_tile = TileAddByDiagDir(neighbour_facing_tile, node_current->dir);
 						if (!IsValidTile(successor_tile)) continue;
@@ -519,14 +519,14 @@ struct BuildDocksToolbarWindow : Window {
 							DiagDirToAxis(GetLockDirection(successor_tile)) == DiagDirToAxis(node_current->dir)) ||
 							// or if the tile types/slopes are valid for a new lock
 							(ShipPlannerValidCanalTile(neighbour_facing_tile) && // check pre tile
-							IsValidTile(successor_tile) && // check actual lock tile is valid
-							(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // check ownership
-							IsValidDiagDirection(slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile))) && // check slope of tile
-							DiagDirToAxis(node_current->dir) == DiagDirToAxis(slope_dir) &&
-							ShipPlannerValidCanalTile(post_tile)))) continue; // check post tile
-							// otherwise skip to the next successor_tiletype
+								IsValidTile(successor_tile) && // check actual lock tile is valid
+								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // check ownership
+								IsValidDiagDirection(slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile))) && // check slope of tile
+								DiagDirToAxis(node_current->dir) == DiagDirToAxis(slope_dir) &&
+								ShipPlannerValidCanalTile(post_tile)))) continue; // check post tile
+								// otherwise skip to the next successor_tiletype
 
-						// hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock
+							// hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock
 						tentative_cost = node_current->g_cost + 20;
 						break;
 					}
