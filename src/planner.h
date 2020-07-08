@@ -91,7 +91,7 @@ inline TileIndex GetFacingTile(ShipNode node)
 			// the facing tile is just  adjacent to the canal tile
 			return TileAddByDiagDir(node->tile, node->dir);
 
-		case (SPTT_LOCK):
+		case (SPTT_LOCK): {
 			// the facing tile is at the end of the lock, i.e. two tiles from its centre
 			TileIndex mid = TileAddByDiagDir(node->tile, node->dir);
 			if (!IsValidTile(mid)) {
@@ -99,6 +99,7 @@ inline TileIndex GetFacingTile(ShipNode node)
 			} else {
 				return TileAddByDiagDir(mid, node->dir);
 			}
+		}
 
 		default:
 			NOT_REACHED();

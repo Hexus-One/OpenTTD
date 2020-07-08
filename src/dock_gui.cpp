@@ -463,7 +463,7 @@ struct BuildDocksToolbarWindow : Window {
 		while (!OpenQueue.empty()) {
 			ShipNode temp_node = OpenQueue.top();
 			OpenQueue.pop();
-			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(temp_node->tile, ship_planner_end_tile);
+			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(GetFacingTile(temp_node), ship_planner_end_tile);
 			new_queue.push(temp_node);
 		}
 		OpenQueue = new_queue;
@@ -557,7 +557,7 @@ struct BuildDocksToolbarWindow : Window {
 							continue;
 						}
 						node_successor->g_cost = successor_current_cost;
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
 						// we also have to move the node further to the front, uh hm
 						OpenQueue.push(node_successor); // lazy insert, hopefully this works?
 					// else if node_successor is in the CLOSED list
@@ -569,7 +569,7 @@ struct BuildDocksToolbarWindow : Window {
 						}
 						// Move node_successor from the CLOSED list to the OPEN list
 						node_successor->g_cost = successor_current_cost;
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
 						OpenQueue.push(node_successor);
 						OpenSet.insert({ itr->first, itr->second });
 						ClosedSet.erase(itr);
@@ -581,7 +581,7 @@ struct BuildDocksToolbarWindow : Window {
 						node_successor->dir = dir;
 						node_successor->g_cost = successor_current_cost;
 						// Set h(node_successor) to be the heuristic distance to node_goal
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(successor_tile, ship_planner_end_tile);
+						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
 						// Add it to OpenQueue
 						OpenQueue.push(node_successor);
 						OpenSet.insert({ HashShipNode(node_successor), node_successor });
