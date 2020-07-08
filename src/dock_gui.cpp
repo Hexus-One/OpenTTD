@@ -38,6 +38,7 @@
 planner_tileindex_set PathHighlightSet;
 TileIndex ship_planner_start_tile;
 TileIndex ship_planner_end_tile;
+ShipNode best_node;
 
 ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
 ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
@@ -412,22 +413,6 @@ struct BuildDocksToolbarWindow : Window {
 		VpSetPresizeRange(tile_from, tile_to);
 	}
 
-	// update the selected tiles for path highlighting
-	// todo: change to unordered map (associate tile highlight with each tile)
-	// also only change if the set actually changes
-	void UpdatePathSet(ShipNode end = nullptr)
-	{
-		planner_tileindex_set::iterator it = PathHighlightSet.begin();
-		while (it != PathHighlightSet.end()) {
-			MarkTileDirtyByTile(*it);
-			it = PathHighlightSet.erase(it);
-		}
-		while (end != nullptr) {
-			PathHighlightSet.insert(end->tile);
-			end = end->prev;
-		}
-	}
-
 	// heuristic function for A* path search
 	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
 	{
@@ -436,16 +421,15 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// exit if either tiles aren't defined,
+		// exit if either tiles aren't defined
 		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE) {
-			UpdatePathSet();
 			return;
 		}
 		// or the goal has already been found
 		// (we have to check all four directions I guess)
 		ShipNodeSet::iterator itr;
 		PathCost cheapest = PATHCOST_MAX;
-		ShipNode best_node = nullptr;
+		best_node = nullptr;
 		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
 			if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
 				itr->second->g_cost < cheapest) {
@@ -453,7 +437,6 @@ struct BuildDocksToolbarWindow : Window {
 				cheapest = best_node->g_cost;
 			}
 		}
-		UpdatePathSet(best_node);
 		if (cheapest != PATHCOST_MAX) {
 			return;
 		}

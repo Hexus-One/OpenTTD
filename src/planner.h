@@ -54,6 +54,7 @@ extern planner_tileindex_set PathHighlightSet; // highlight the finished path fo
 
 extern TileIndex ship_planner_start_tile;
 extern TileIndex ship_planner_end_tile;
+extern ShipNode best_node;
 
 inline ShipNode newShipNode(TileIndex tile = INVALID_TILE, DiagDirection dir = INVALID_DIAGDIR)
 {
@@ -103,6 +104,22 @@ inline TileIndex GetFacingTile(ShipNode node)
 
 		default:
 			NOT_REACHED();
+	}
+}
+
+// update the selected tiles for path highlighting
+	// todo: change to unordered map (associate tile highlight with each tile)
+	// also only change if the set actually changes
+inline void UpdatePathSet(ShipNode end = nullptr)
+{
+	planner_tileindex_set::iterator it = PathHighlightSet.begin();
+	while (it != PathHighlightSet.end()) {
+		MarkTileDirtyByTile(*it);
+		it = PathHighlightSet.erase(it);
+	}
+	while (end != nullptr) {
+		PathHighlightSet.insert(end->tile);
+		end = end->prev;
 	}
 }
 
