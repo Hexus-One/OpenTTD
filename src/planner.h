@@ -13,6 +13,7 @@
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 typedef uint16 PathCost;
 #define PATHCOST_MAX UINT16_MAX
@@ -55,6 +56,7 @@ extern planner_tileindex_set PathHighlightSet; // highlight the finished path fo
 extern TileIndex ship_planner_start_tile;
 extern TileIndex ship_planner_end_tile;
 extern ShipNode best_node;
+inline std::vector<ShipNode> all_nodes;
 
 inline ShipNode newShipNode(TileIndex tile = INVALID_TILE, DiagDirection dir = INVALID_DIAGDIR)
 {
@@ -64,7 +66,17 @@ inline ShipNode newShipNode(TileIndex tile = INVALID_TILE, DiagDirection dir = I
 	new_node->dir = dir;
 	new_node->f_cost = 0;
 	new_node->g_cost = 0;
+	all_nodes.push_back(new_node);
 	return new_node;
+}
+
+inline void deleteAllNodes()
+{
+	while (!all_nodes.empty()) {
+		delete(*all_nodes.end());
+		all_nodes.pop_back();
+	}
+	all_nodes.swap(all_nodes);
 }
 
 // create a key from a node, for use in ClosedSet
