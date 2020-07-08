@@ -423,6 +423,7 @@ struct BuildDocksToolbarWindow : Window {
 	{
 		// exit if either tiles aren't defined
 		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE) {
+			UpdatePathSet();
 			return;
 		}
 		// or the goal has already been found
@@ -438,6 +439,7 @@ struct BuildDocksToolbarWindow : Window {
 			}
 		}
 		if (cheapest != PATHCOST_MAX) {
+			UpdatePathSet(best_node);
 			return;
 		}
 		// if the goal tile has changed since the last execution, update the heuristic value for all nodes in the queue
