@@ -415,10 +415,13 @@ struct BuildDocksToolbarWindow : Window {
 	// update the selected tiles for path highlighting
 	// todo: change to unordered map (associate tile highlight with each tile)
 	// also only change if the set actually changes
-	// also: implement markDirty for the tiles
 	void UpdatePathSet(ShipNode end = nullptr)
 	{
-		PathHighlightSet = planner_tileindex_set();
+		planner_tileindex_set::iterator it = PathHighlightSet.begin();
+		while (it != PathHighlightSet.end()) {
+			MarkTileDirtyByTile(*it);
+			it = PathHighlightSet.erase(it);
+		}
 		while (end != nullptr) {
 			PathHighlightSet.insert(end->tile);
 			end = end->prev;
@@ -469,9 +472,10 @@ struct BuildDocksToolbarWindow : Window {
 
 		// Do the A* thingo
 		// while the OPEN list is not empty
+		// step count is arbitrarily set
 		// TODO: Add time limit so as not to lag the whole thing
 		uint16 steps = 0;
-		while (!OpenQueue.empty() && steps++ < 16384) {
+		while (!OpenQueue.empty() && steps++ < 4096) {
 			// Take from the open list the node node_current with the lowest
 				// f(node_current) = g(node_current) + h(node_current)
 			ShipNode node_current = OpenQueue.top();
