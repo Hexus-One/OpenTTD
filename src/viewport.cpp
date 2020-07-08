@@ -1109,7 +1109,7 @@ draw_inner:
 			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
 		} else if (_thd.drawstyle & HT_START_END) {
 			// only draw if on the start/end tiles
-			if (((ship_planner_start_tile == INVALID_TILE) && ti->tile == TileVirtXY(_thd.pos.x, _thd.pos.y)) || ti->tile == TileVirtXY(_thd.selstart.x, _thd.selstart.y) || ti->tile == TileVirtXY(_thd.selend.x, _thd.selend.y)) {
+			if ((ship_planner_start_tile == INVALID_TILE && ti->x == _thd.pos.x && ti->y == _thd.pos.y) || ti->tile == ship_planner_start_tile || ti->tile == ship_planner_end_tile) {
 				// XOR conditional expression, please don't ask how this works
 				// TODO: Change IsTileFlat to a more precise validity check for candidate tiles (eg. checking tile type as well as slope)
 				DrawTileSelectionRect(ti, !IsTileFlat(ti->tile) || (ship_planner_start_tile == INVALID_TILE) != (ship_planner_end_tile == INVALID_TILE) ? PALETTE_SEL_TILE_RED : PAL_NONE);
