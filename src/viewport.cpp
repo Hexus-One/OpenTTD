@@ -1107,7 +1107,7 @@ static void DrawTileSelection(const TileInfo *ti)
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
 			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
-		} else if (_thd.drawstyle & HT_START_END) {
+		} else if (_thd.drawstyle == HT_START_END) { // == necessary, & will break landscaping tools
 			// only draw if on the start/end tiles
 			if ((ship_planner_start_tile == INVALID_TILE && ti->x == _thd.pos.x && ti->y == _thd.pos.y) || ti->tile == ship_planner_start_tile || ti->tile == ship_planner_end_tile) {
 				// XOR conditional expression, please don't ask how this works
