@@ -373,7 +373,6 @@ struct BuildDocksToolbarWindow : Window {
 					OpenQueue = ShipNodeQueue();
 					OpenSet = ShipNodeSet();
 					ClosedSet = ShipNodeSet();
-					deleteAllNodes();
 					ship_planner_start_tile = INVALID_TILE;
 					ship_planner_end_tile = INVALID_TILE;
 					break;
