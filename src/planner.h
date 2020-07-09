@@ -98,7 +98,7 @@ inline bool ShipPlannerValidCanalTile(const TileIndex& tile)
 
 inline bool ShipPlannerValidLockTile(const TileIndex& tile)
 {
-	return (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || (IsWaterTile(tile) && !IsCanal(tile)));
+	return (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) && !IsCanal(tile));
 }
 
 inline TileIndex GetFacingTile(ShipNode node)

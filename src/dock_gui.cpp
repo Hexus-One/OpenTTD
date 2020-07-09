@@ -320,8 +320,8 @@ struct BuildDocksToolbarWindow : Window {
 					int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
 					int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
 					// if they click too quickly, we assume they just clicked on a single tile, so behave just like the regular canal tool
-					if (TileXY(gx, gy) == ship_planner_start_tile) {
-						DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
+					if (end_tile == ship_planner_start_tile) {
+						if (!IsWaterTile(end_tile))	DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
 						break;
 					}
 					// check all four directions, find the cheapest node
@@ -381,6 +381,12 @@ struct BuildDocksToolbarWindow : Window {
 
 				default: break;
 			}
+		} else if (select_proc == DDSP_SHIP_PLANNER) { // clear ship planner on mouse up
+			OpenQueue = ShipNodeQueue();
+			OpenSet = ShipNodeSet();
+			ClosedSet = ShipNodeSet();
+			ship_planner_start_tile = INVALID_TILE;
+			ship_planner_end_tile = INVALID_TILE;
 		}
 	}
 
@@ -519,7 +525,7 @@ struct BuildDocksToolbarWindow : Window {
 						if (IsTileType(successor_tile, MP_WATER) && IsLock(successor_tile) ||
 							// or if the tile types are valid for a new lock
 							ShipPlannerValidLockTile(neighbour_facing_tile) && // check pre tile
-								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile)) && // TODO: check ownership
+								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile) || IsWaterTile(successor_tile)) && // TODO: check ownership
 								ShipPlannerValidLockTile(post_tile)) { // check post tile
 							/* hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock */
 							tentative_cost = node_current->g_cost + 20;
