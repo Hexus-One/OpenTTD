@@ -38,6 +38,7 @@
 #include "safeguards.h"
 #include <chrono>
 
+/*
 planner_tileindex_set PathHighlightSet;
 TileIndex ship_planner_start_tile;
 TileIndex ship_planner_end_tile;
@@ -46,6 +47,8 @@ ShipNode best_node;
 ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
 ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
 ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
+*/
+RouteplannerShip routeplanner_ship;
 
 static void ShowBuildDockStationPicker(Window *parent);
 static void ShowBuildDocksDepotPicker(Window *parent);
@@ -112,9 +115,6 @@ struct BuildDocksToolbarWindow : Window {
 		this->last_clicked_widget = WID_DT_INVALID;
 		this->InitNested(window_number);
 		this->OnInvalidateData();
-
-		ship_planner_start_tile = INVALID_TILE;
-		ship_planner_end_tile = INVALID_TILE;
 
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
@@ -263,20 +263,9 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_SHIP_PLANNER: // Ship planner button
-				// check if this is a valid tile
+				/* only start if valid tile */
 				if (RouteplannerShip::IsValidCanalTile(tile)) {
-					ship_planner_start_tile = tile;
-					// create the first node :O
-					// create one for each of the four directions
-					for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-						ShipNode first_node = newShipNode(tile);
-						first_node->type = SPTT_WATER;
-						first_node->dir = dir;
-						// Put node_start in the OPEN list with f(node_start) = h(node_start) (initialization)
-						OpenQueue.push(first_node);
-						OpenSet.insert({ HashShipNode(first_node), first_node });
-					}
-
+					RouteplannerShip rp = RouteplannerShip(tile);
 					VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_SHIP_PLANNER);
 				}
 				break;
@@ -289,17 +278,8 @@ struct BuildDocksToolbarWindow : Window {
 	{
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 		// reassign the goal tile for ship planner
-		if (this->IsWidgetLowered(WID_DT_SHIP_PLANNER)) {
-			if (pt.x != -1) {
-				int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
-				int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
-				ship_planner_end_tile = TileXY(gx, gy);
-				if (!ShipPlannerValidCanalTile(ship_planner_end_tile)) {
-					ship_planner_end_tile = INVALID_TILE;
-				}
-			} else {
-				ship_planner_end_tile = INVALID_TILE;
-			}
+		if (select_proc == DDSP_SHIP_PLANNER) {
+			routeplanner_ship.AssignGoal(pt);
 		}
 	}
 
@@ -317,76 +297,14 @@ struct BuildDocksToolbarWindow : Window {
 					DoCommandP(end_tile, start_tile, WATER_CLASS_RIVER, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_PLACE_RIVERS), CcPlaySound_SPLAT_WATER);
 					break;
 				case DDSP_SHIP_PLANNER: {
-					// sometimes the drag function doesn't execute between mouseDown and Up - usually only when the user clicks too quickly.
-					int gx = (pt.x & ~TILE_UNIT_MASK) >> 4;
-					int gy = (pt.y & ~TILE_UNIT_MASK) >> 4;
-					// if they click too quickly, we assume they just clicked on a single tile, so behave just like the regular canal tool
-					if (end_tile == ship_planner_start_tile) {
-						if (!IsWaterTile(end_tile))	DoCommandP(end_tile, start_tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-						break;
-					}
-					// check all four directions, find the cheapest node
-					ShipNodeSet::iterator itr;
-					PathCost cheapest = PATHCOST_MAX;
-					ShipNode best_node = nullptr;
-					for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-						if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
-							itr->second->g_cost < cheapest) {
-							best_node = itr->second;
-							cheapest = best_node->g_cost;
-						}
-					}
-					// build the path if it exists
-					// TODO: reduce DoCommandP count by finding all tiles in a straight line
-					if (best_node != nullptr) {
-						TileIndex start_drag = INVALID_TILE;
-						for (ShipNode temp = best_node; temp != nullptr; temp = temp->prev) {
-							switch (temp->type) {
-								case SPTT_WATER:
-									// don't build if on water tile
-									if (!(IsWaterTile(temp->tile) || IsBuoyTile(temp->tile))) {
-										if (start_drag == INVALID_TILE) {
-											start_drag = temp->tile;
-										}
-										// don't send command now if the next tile is still in a straight line from here
-										if (temp->prev == nullptr || temp->prev->type != SPTT_WATER ||
-											IsWaterTile(temp->prev->tile) || IsBuoyTile(temp->prev->tile) ||
-											DiagdirBetweenTiles(start_drag, temp->prev->tile) == INVALID_DIAGDIR) {
-											DoCommandP(start_drag, temp->tile, WATER_CLASS_CANAL, CMD_BUILD_CANAL | CMD_MSG(STR_ERROR_CAN_T_BUILD_CANALS), CcPlaySound_SPLAT_WATER);
-											start_drag = INVALID_TILE;
-										}
-									}
-									break;
-
-								case SPTT_LOCK:
-									// don't build if there's already a lock here
-									if (!(IsTileType(temp->tile, MP_WATER) && IsLock(temp->tile) && GetLockPart(temp->tile) == LOCK_PART_MIDDLE)) {
-										DoCommandP(temp->tile, 0, 0, CMD_BUILD_LOCK | CMD_MSG(STR_ERROR_CAN_T_BUILD_LOCKS), CcBuildDocks);
-									}
-									break;
-
-								default:
-									break;
-							}
-						}
-					}
-					// and then clean up afterwards
-					OpenQueue = ShipNodeQueue();
-					OpenSet = ShipNodeSet();
-					ClosedSet = ShipNodeSet();
-					ship_planner_start_tile = INVALID_TILE;
-					ship_planner_end_tile = INVALID_TILE;
-					break;
+					routeplanner_ship.AssignGoal(pt);
+					routeplanner_ship.TryBuildFinalPath();
 				}
 
 				default: break;
 			}
 		} else if (select_proc == DDSP_SHIP_PLANNER) { // clear ship planner on mouse up
-			OpenQueue = ShipNodeQueue();
-			OpenSet = ShipNodeSet();
-			ClosedSet = ShipNodeSet();
-			ship_planner_start_tile = INVALID_TILE;
-			ship_planner_end_tile = INVALID_TILE;
+			routeplanner_ship.Reset();
 		}
 	}
 
@@ -421,185 +339,9 @@ struct BuildDocksToolbarWindow : Window {
 		VpSetPresizeRange(tile_from, tile_to);
 	}
 
-	// heuristic function for A* path search
-	float ShipHeuristic(const TileIndex& t0, const TileIndex& t1)
-	{
-		return DistanceMax(t0, t1);
-	}
-
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		// exit if either tiles aren't defined
-		if (ship_planner_start_tile == INVALID_TILE || ship_planner_end_tile == INVALID_TILE) {
-			UpdatePathSet();
-			return;
-		}
-		// or the goal has already been found
-		// (we have to check all four directions I guess)
-		ShipNodeSet::iterator itr;
-		PathCost cheapest = PATHCOST_MAX;
-		best_node = nullptr;
-		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-			if ((itr = ClosedSet.find(HashShipNode(SPTT_WATER, ship_planner_end_tile, dir))) != ClosedSet.end() &&
-				itr->second->g_cost < cheapest) {
-				best_node = itr->second;
-				cheapest = best_node->g_cost;
-			}
-		}
-		if (cheapest != PATHCOST_MAX) {
-			UpdatePathSet(best_node);
-			return;
-		}
-		// if the goal tile has changed since the last execution, update the heuristic value for all nodes in the queue
-		// TODO: actually check if the goal tile has changed
-		ShipNodeQueue new_queue = ShipNodeQueue();
-		while (!OpenQueue.empty()) {
-			ShipNode temp_node = OpenQueue.top();
-			OpenQueue.pop();
-			temp_node->f_cost = temp_node->g_cost + ShipHeuristic(GetFacingTile(temp_node), ship_planner_end_tile);
-			new_queue.push(temp_node);
-		}
-		OpenQueue = new_queue;
-
-		// Do the A* thingo
-		// while the OPEN list is not empty
-		// time limit is arbitrarily set - only calculate for 25ms per tick
-		using namespace std::chrono;
-		high_resolution_clock::time_point until = high_resolution_clock::now() + (milliseconds) 25;
-		uint16 steps = 0;
-		while (!OpenQueue.empty()) {
-			/* only check clock every 100 nodes */
-			if (steps++ % 100 == 99 && high_resolution_clock::now() > until) {
-				break;
-			}
-			// Take from the open list the node node_current with the lowest
-				// f(node_current) = g(node_current) + h(node_current)
-			ShipNode node_current = OpenQueue.top();
-			OpenQueue.pop();
-			OpenSet.erase(HashShipNode(node_current));
-			// if node_current is node_goal we have found the solution; don't break - instead keep searching
-
-			// Generate each state node_successor that come after node_current
-			// since node_current already has a direction, we only choose directions for canal neighbours
-			// offset the "facing" tile for the current node - in the case that it's a LOCK or AQUEDUCT
-			TileIndex neighbour_facing_tile = GetFacingTile(node_current);
-
-			// check this tile is within the map, otherwise write off node_current and move on
-			if (!IsValidTile(neighbour_facing_tile)) {
-				// repeating this one line is better than indenting the following 200 lines :^)
-				ClosedSet.insert({ HashShipNode(node_current), node_current });
-				continue;
-			}
-
-			// try each tile type for the new neighbour
-			for (ShipPlannerTileType successor_tiletype = SPTT_BEGIN; successor_tiletype < SPTT_END; successor_tiletype++) {
-				TileIndex successor_tile;
-				PathCost tentative_cost;
-				switch (successor_tiletype) {
-					// deal with canals/plain water (including buoys)
-					case SPTT_WATER:
-						// check it is valid for placement
-						successor_tile = neighbour_facing_tile;
-						// this check is different to IsValidTile()
-						if (!ShipPlannerValidCanalTile(successor_tile)) continue;
-						tentative_cost = node_current->g_cost + 2; // magic number oops
-						break;
-
-						// deal with locks for vertical movement :)
-					case SPTT_LOCK: {
-						/* check pre-lock tile */
-						if (!IsTileFlat(neighbour_facing_tile)) continue;
-
-						/* check slope tile */
-						successor_tile = TileAddByDiagDir(neighbour_facing_tile, node_current->dir);
-						if (!IsValidTile(successor_tile)) continue;
-
-						DiagDirection slope_dir = GetInclinedSlopeDirection(GetTileSlope(successor_tile));
-						if (!IsValidDiagDirection(slope_dir) || DiagDirToAxis(node_current->dir) != DiagDirToAxis(slope_dir)) continue;
-
-						/* check post-lock tile */
-						TileIndex post_tile = TileAddByDiagDir(successor_tile, node_current->dir);
-						if (!IsValidTile(post_tile) || !IsTileFlat(post_tile)) continue;
-
-						/* check if a lock already exists here */
-						if (IsTileType(successor_tile, MP_WATER) && IsLock(successor_tile) ||
-							// or if the tile types are valid for a new lock
-							ShipPlannerValidLockTile(neighbour_facing_tile) && // check pre tile
-								(IsTileType(successor_tile, MP_CLEAR) || IsTileType(successor_tile, MP_TREES) || IsCoastTile(successor_tile) || IsWaterTile(successor_tile)) && // TODO: check ownership
-								ShipPlannerValidLockTile(post_tile)) { // check post tile
-							/* hardcoded value, calculated by getting the fastest ship (hovercraft 112kph) and seeing fast it can travel vs travelling through a lock */
-							tentative_cost = node_current->g_cost + 20;
-						} else {
-							continue;
-						}
-						break;
-					}
-
-					default:
-						continue;
-				}
-
-				for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
-					// if the neighbour type isn't a canal then we check the direction matches node_current
-					// we also check we're not going back the way we just came
-					if (dir == ReverseDiagDir(node_current->dir) || successor_tiletype != SPTT_WATER && dir != node_current->dir) {
-						continue;
-					}
-					PathCost successor_current_cost = tentative_cost;
-
-					// ships go faster on diagonals, i.e. "turning" is faster
-					if (dir != node_current->dir) {
-						successor_current_cost--;
-					}
-
-					ShipNode node_successor;
-					// if node_successor is in the OPEN list
-					if ((itr = OpenSet.find(HashShipNode(successor_tiletype, successor_tile, dir))) != OpenSet.end()) {
-						node_successor = itr->second;
-						// if g(node_successor) <= successor_current_cost continue (to line 20)
-						if (node_successor->g_cost <= successor_current_cost) {
-							continue;
-						}
-						node_successor->g_cost = successor_current_cost;
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
-						// we also have to move the node further to the front, uh hm
-						OpenQueue.push(node_successor); // lazy insert, hopefully this works?
-					// else if node_successor is in the CLOSED list
-					} else if ((itr = ClosedSet.find(HashShipNode(successor_tiletype, successor_tile, dir))) != ClosedSet.end()) {
-						node_successor = itr->second;
-						// if g(node_successor) <= successor_current_cost continue (to line 20)
-						if (node_successor->g_cost <= successor_current_cost) {
-							continue;
-						}
-						// Move node_successor from the CLOSED list to the OPEN list
-						node_successor->g_cost = successor_current_cost;
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
-						OpenQueue.push(node_successor);
-						OpenSet.insert({ itr->first, itr->second });
-						ClosedSet.erase(itr);
-					} else {
-						// Add node_successor to the OPEN list
-						// Which means it has to be created
-						node_successor = newShipNode(successor_tile);
-						node_successor->type = successor_tiletype;
-						node_successor->dir = dir;
-						node_successor->g_cost = successor_current_cost;
-						// Set h(node_successor) to be the heuristic distance to node_goal
-						node_successor->f_cost = node_successor->g_cost + ShipHeuristic(GetFacingTile(node_successor), ship_planner_end_tile);
-						// Add it to OpenQueue
-						OpenQueue.push(node_successor);
-						OpenSet.insert({ HashShipNode(node_successor), node_successor });
-					}
-					// Set the parent of node_successor to node_current
-					node_successor->prev = node_current;
-				}
-			}
-			// Add node_current to the CLOSED list
-			ClosedSet.insert({ HashShipNode(node_current), node_current });
-		}
-		DEBUG(misc, 4, "%d nodes evaluated during tick.", steps);
-		// if (node_current != node_goal) exit with error(the OPEN list is empty)
-		// in our case, do nothing I guess
+		routeplanner_ship.DoPathSearch();
 	}
 
 	static HotkeyList hotkeys;
