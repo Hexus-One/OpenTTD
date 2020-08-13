@@ -15,18 +15,6 @@
 #include <unordered_set>
 #include <vector>
 
-typedef uint16 PathCost;
-#define PATHCOST_MAX UINT16_MAX
-
-enum ShipPlannerTileType {
-	SPTT_BEGIN = 0,
-	SPTT_WATER = 0, // includes canal, ocean and river tiles (TODO: special handling for half ocean tiles)
-	SPTT_LOCK,
-	SPTT_AQUEDUCT,
-	SPTT_END
-};
-
-DECLARE_POSTFIX_INCREMENT(ShipPlannerTileType)
 
 typedef struct _ship_node {
 	TileIndex tile;

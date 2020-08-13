@@ -26,7 +26,8 @@
 #include "gui.h"
 #include "zoom_func.h"
 #include "station_map.h"
-#include "planner.h"
+#include "planner.hpp"
+#include "routeplanner_ship.cpp"
 #include "debug.h"
 
 #include "widgets/dock_widget.h"
@@ -263,7 +264,7 @@ struct BuildDocksToolbarWindow : Window {
 
 			case WID_DT_SHIP_PLANNER: // Ship planner button
 				// check if this is a valid tile
-				if (ShipPlannerValidCanalTile(tile)) {
+				if (RouteplannerShip::IsValidCanalTile(tile)) {
 					ship_planner_start_tile = tile;
 					// create the first node :O
 					// create one for each of the four directions
