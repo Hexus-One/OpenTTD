@@ -26,7 +26,8 @@
 #include "gui.h"
 #include "zoom_func.h"
 #include "station_map.h"
-#include "planner.h"
+#include "planner.hpp"
+#include "routeplanner.hpp"
 #include "debug.h"
 
 #include "widgets/dock_widget.h"
