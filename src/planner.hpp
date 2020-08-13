@@ -5,7 +5,7 @@
  * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <http://www.gnu.org/licenses/>.
  */
 
- /** @file planner.h Functions related to planner build tools. */
+ /** @file planner.hpp Functions related to planner build tools. */
 
 #ifndef BUILD_PLANNER
 #define BUILD_PLANNER
