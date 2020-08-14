@@ -25,10 +25,7 @@
 #include "hotkeys.h"
 #include "gui.h"
 #include "zoom_func.h"
-#include "station_map.h"
-#include "planner.hpp"
-#include "routeplanner_ship.cpp"
-#include "debug.h"
+#include "routeplanner.h"
 
 #include "widgets/dock_widget.h"
 
@@ -36,18 +33,7 @@
 #include "table/strings.h"
 
 #include "safeguards.h"
-#include <chrono>
 
-/*
-planner_tileindex_set PathHighlightSet;
-TileIndex ship_planner_start_tile;
-TileIndex ship_planner_end_tile;
-ShipNode best_node;
-
-ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
-ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
-ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
-*/
 RouteplannerShip routeplanner_ship;
 
 static void ShowBuildDockStationPicker(Window *parent);
@@ -115,7 +101,6 @@ struct BuildDocksToolbarWindow : Window {
 		this->last_clicked_widget = WID_DT_INVALID;
 		this->InitNested(window_number);
 		this->OnInvalidateData();
-
 		if (_settings_client.gui.link_terraform_toolbar) ShowTerraformToolbar(this);
 	}
 

@@ -88,7 +88,7 @@
 #include "command_func.h"
 #include "network/network_func.h"
 #include "framerate_type.h"
-#include "planner.hpp"
+#include "routeplanner.h"
 
 #include <map>
 
@@ -1096,8 +1096,8 @@ static void DrawTileSelection(const TileInfo *ti)
 		return;
 	}
 
-	// ship planner: draw the tile highlights for the finished path
-	if (_thd.drawstyle == HT_START_END && PathHighlightSet.find(ti->tile) != PathHighlightSet.end()) {
+	/* ship routeplanner: draw the tile highlights for the finished path */
+	if (_thd.drawstyle == HT_START_END && routeplanner_ship.IsPathTile(ti->tile)) {
 		DrawTileSelectionRect(ti, PAL_NONE);
 	}
 
@@ -1107,12 +1107,10 @@ static void DrawTileSelection(const TileInfo *ti)
 draw_inner:
 		if (_thd.drawstyle & HT_RECT) {
 			if (!is_redsq) DrawTileSelectionRect(ti, _thd.make_square_red ? PALETTE_SEL_TILE_RED : PAL_NONE);
-		} else if (_thd.drawstyle == HT_START_END) { // == necessary, & will break landscaping tools
-			// only draw if on the start/end tiles
-			if ((ship_planner_start_tile == INVALID_TILE && ti->x == _thd.pos.x && ti->y == _thd.pos.y) || ti->tile == ship_planner_start_tile || ti->tile == ship_planner_end_tile) {
-				// XOR conditional expression, please don't ask how this works
-				// TODO: Change IsTileFlat to a more precise validity check for candidate tiles (eg. checking tile type as well as slope)
-				DrawTileSelectionRect(ti, !IsTileFlat(ti->tile) || (ship_planner_start_tile == INVALID_TILE) != (ship_planner_end_tile == INVALID_TILE) ? PALETTE_SEL_TILE_RED : PAL_NONE);
+		} else if (_thd.drawstyle == HT_START_END) { // "==" necessary, "&" will break landscaping tools
+			/* only draw if on the start/end tiles, and draw them red if either tile is invalid */
+			if (routeplanner_ship.IsEndTileHighlight(ti)) {
+				DrawTileSelectionRect(ti, routeplanner_ship.DrawAsRed(ti->tile) ? PALETTE_SEL_TILE_RED : PAL_NONE);
 			}
 		} else if (_thd.drawstyle & HT_POINT) {
 			/* Figure out the Z coordinate for the single dot. */

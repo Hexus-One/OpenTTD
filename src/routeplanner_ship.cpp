@@ -7,13 +7,21 @@
 
  /** @file routeplanner_ship.cpp Routeplanner for building ship canals. */
 
+#include "routeplanner.h"
+
 typedef uint16 PathCost;
 static const PathCost PATHCOST_MAX2 = UINT16_MAX;
 
-/* global var for the single Routeplanner class,
- * shared use between dock_gui.cpp and viewport.cpp
- * TODO: see if this can be eliminated */
-extern RouteplannerShip routeplanner_ship;
+/*
+planner_tileindex_set PathHighlightSet;
+TileIndex ship_planner_start_tile;
+TileIndex ship_planner_end_tile;
+ShipNode best_node;
+
+ShipNodeQueue OpenQueue; // Open set of nodes known but yet to be expanded
+ShipNodeSet OpenSet; // same as OpenQueue but used to check for duplicate nodes
+ShipNodeSet ClosedSet; // Nodes that have been visited and expanded - uint32 is a hash of tile, direction (if relevant) and type
+*/
 
 enum ShipPlannerTileType {
 	SPTT_BEGIN = 0,
@@ -69,7 +77,13 @@ class RouteplannerShip {
 private:
 	TileIndex start_tile;
 	TileIndex end_tile;
-
+	RouteplannerShipNode best_node;
+	/*
+	typedef std::priority_queue<ShipNode, std::vector<ShipNode>, CompareShipNodes> ShipNodeQueue;
+	typedef std::unordered_map<uint64, ShipNode> ShipNodeSet;
+	typedef std::unordered_set<TileIndex> planner_tileindex_set;
+	extern planner_tileindex_set PathHighlightSet; // highlight the finished path for the various planner tools
+	*/
 
 public:
 	/* constructor but also set the start tile */
@@ -353,5 +367,69 @@ public:
 		return IsValidTile(tile) && IsTileFlat(tile) && (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES)
 			|| IsWaterTile(tile)
 			|| IsBuoyTile(tile));
+	}
+
+
+	static bool ShipPlannerValidLockTile(const TileIndex& tile)
+	{
+		return (IsTileType(tile, MP_CLEAR) || IsTileType(tile, MP_TREES) || IsWaterTile(tile) && !IsCanal(tile));
+	}
+
+	static TileIndex GetFacingTile(ShipNode node)
+	{
+		TileIndex neighbour_facing_tile = INVALID_TILE;
+		switch (node->type) {
+			case (SPTT_WATER):
+				// the facing tile is just  adjacent to the canal tile
+				return TileAddByDiagDir(node->tile, node->dir);
+
+			case (SPTT_LOCK): {
+				// the facing tile is at the end of the lock, i.e. two tiles from its centre
+				TileIndex mid = TileAddByDiagDir(node->tile, node->dir);
+				if (!IsValidTile(mid)) {
+					return INVALID_TILE;
+				} else {
+					return TileAddByDiagDir(mid, node->dir);
+				}
+			}
+
+			default:
+				NOT_REACHED();
+		}
+	}
+
+	// update the selected tiles for path highlighting
+		// todo: change to unordered map (associate tile highlight with each tile)
+		// also only change if the set actually changes
+	void UpdatePathSet(ShipNode end = nullptr)
+	{
+		planner_tileindex_set::iterator it = PathHighlightSet.begin();
+		while (it != PathHighlightSet.end()) {
+			MarkTileDirtyByTile(*it);
+			it = PathHighlightSet.erase(it);
+		}
+		while (end != nullptr) {
+			PathHighlightSet.insert(end->tile);
+			end = end->prev;
+		}
+	}
+
+	bool IsPathTile(TileIndex tile)
+	{
+		return (PathHighlightSet.find(tile) != PathHighlightSet.end());
+	}
+
+	bool IsEndTileHighlight(const TileInfo *ti)
+	{
+		return ((ship_planner_start_tile == INVALID_TILE && ti->x == _thd.pos.x && ti->y == _thd.pos.y) ||
+			ti->tile == ship_planner_start_tile ||
+			ti->tile == ship_planner_end_tile);
+	}
+
+	bool DrawAsRed(TileIndex tile)
+	{
+		// XOR conditional expression, please don't ask how this works
+		// TODO: Change IsTileFlat to a more precise validity check for candidate tiles (eg. checking tile type as well as slope)
+		return !IsValidCanalTile(tile) || (ship_planner_start_tile == INVALID_TILE) != (ship_planner_end_tile == INVALID_TILE);
 	}
 };
